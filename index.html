@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Informasi Mentoring - Supabase DB</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Library SheetJS untuk Export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Library Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <!-- ================= AUTH SECTION ================= -->
+    <div class="auth-container" id="auth-section">
+        <div class="auth-box">
+            
+            <!-- FORM LOGIN -->
+            <form id="login-form" class="auth-form active">
+                <h2><i class="fa-solid fa-shield-halved"></i> SIM-Mentoring</h2>
+                <p class="auth-subtitle">Masuk sesuai hak akses akun Anda</p>
+
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required placeholder="email@domain.com">
+                </div>
+
+                <div class="form-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <label for="login-password" style="margin-bottom: 0;">Password</label>
+                        <a href="#" id="link-to-forgot" style="font-size: 0.8rem; color: var(--primary-color); text-decoration: none;">Lupa password?</a>
+                    </div>
+                    <input type="password" id="login-password" required placeholder="••••••••">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="btn-submit-login">Masuk</button>
+                
+                <p class="auth-switch">
+                    Belum punya akun? <a href="#" id="link-to-register">Daftar Akun Baru</a>
+                </p>
+            </form>
+
+            <!-- FORM REGISTER -->
+            <form id="register-form" class="auth-form">
+                <h2><i class="fa-solid fa-user-plus"></i> Registrasi Akun</h2>
+                <p class="auth-subtitle">Daftarkan akun pengguna baru ke Supabase</p>
+
+                <div class="form-group">
+                    <label for="reg-name">Nama Lengkap</label>
+                    <input type="text" id="reg-name" required placeholder="Nama Lengkap">
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" required placeholder="email@domain.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-role">Hak Akses / Role</label>
+                    <select id="reg-role" required>
+                        <option value="Mentor">Mentor / Penginput</option>
+                        <option value="Pengelola">Pengelola</option>
+                        <option value="Viewer">Viewer / Pimpinan</option>
+                        <option value="Admin Super">Admin Super</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" required placeholder="Minimal 6 karakter">
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-confirm-password">Konfirmasi Password</label>
+                    <input type="password" id="reg-confirm-password" required placeholder="Ulangi password">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="btn-submit-reg">Daftar Akun</button>
+                
+                <p class="auth-switch">
+                    Sudah punya akun? <a href="#" id="link-to-login-from-reg">Masuk</a>
+                </p>
+            </form>
+
+            <!-- FORM LUPA PASSWORD -->
+            <form id="forgot-form" class="auth-form">
+                <h2><i class="fa-solid fa-key"></i> Reset Password</h2>
+                <p class="auth-subtitle">Masukkan email terdaftar. Link reset password akan dikirimkan ke email Anda.</p>
+
+                <div class="form-group">
+                    <label for="forgot-email">Email Terdaftar</label>
+                    <input type="email" id="forgot-email" placeholder="email@domain.com" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Kirim Link Reset Password</button>
+
+                <p class="auth-switch">
+                    Batal? <a href="#" id="link-to-login-from-forgot">Kembali ke Login</a>
+                </p>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- ================= MAIN APP SECTION ================= -->
+    <div id="app-section" class="app-hidden">
+        
+        <!-- Navbar -->
+        <header class="navbar">
+            <div class="logo">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <h2>SIM-Mentoring</h2>
+            </div>
+            <div class="user-info">
+                <i class="fa-solid fa-circle-user"></i>
+                <div class="user-details">
+                    <span id="display-user-name">Loading...</span>
+                    <small id="display-user-role" class="badge-role">-</small>
+                </div>
+                <button class="btn-logout" id="btn-logout" title="Keluar">
+                    <i class="fa-solid fa-right-from-bracket"></i> Keluar
+                </button>
+            </div>
+        </header>
+
+        <div class="container">
+            
+            <!-- Tab Navigation -->
+            <div class="tab-navigation" id="app-tabs">
+                <button class="tab-btn active" id="tab-reports-btn">
+                    <i class="fa-solid fa-file-lines"></i> Laporan Mentoring
+                </button>
+                <button class="tab-btn" id="tab-modules-btn">
+                    <i class="fa-solid fa-folder-open"></i> Modul & Materi
+                </button>
+                <button class="tab-btn" id="tab-users-btn" style="display: none;">
+                    <i class="fa-solid fa-users-gear"></i> Daftar Users
+                </button>
+            </div>
+
+            <!-- VIEW 1: LAPORAN MENTORING -->
+            <div id="view-reports" class="tab-content active">
+                <section class="dashboard">
+                    <div class="card">
+                        <div class="card-info">
+                            <h3>Total Sesi</h3>
+                            <p id="stat-total-mentors">0</p>
+                        </div>
+                        <i class="fa-solid fa-chalkboard-teacher card-icon"></i>
+                    </div>
+                    <div class="card">
+                        <div class="card-info">
+                            <h3>Total Anggota Terbina</h3>
+                            <p id="stat-total-members">0</p>
+                        </div>
+                        <i class="fa-solid fa-users card-icon"></i>
+                    </div>
+                    <div class="card">
+                        <div class="card-info">
+                            <h3>Materi Tersampaikan</h3>
+                            <p id="stat-total-materials">0</p>
+                        </div>
+                        <i class="fa-solid fa-book-open card-icon"></i>
+                    </div>
+                </section>
+
+                <section class="actions">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-input" placeholder="Cari mentor, materi, prodi, fakultas, angkatan...">
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn btn-secondary role-manager-only" id="btn-export-excel" style="background-color: #10b981; color: white;">
+                            <i class="fa-solid fa-file-excel"></i> Export Excel
+                        </button>
+                        <button class="btn btn-primary role-write-only" id="btn-add">
+                            <i class="fa-solid fa-plus"></i> Tambah Laporan
+                        </button>
+                    </div>
+                </section>
+
+                <section class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Mentor</th>
+                                <th>Jml Anggota</th>
+                                <th>Fakultas / Prodi</th>
+                                <th>Angkatan</th>
+                                <th>Materi Disampaikan</th>
+                                <th class="role-write-only">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-table-body"></tbody>
+                    </table>
+                </section>
+            </div>
+
+            <!-- VIEW 2: MODUL & MATERI MENTORING -->
+            <div id="view-modules" class="tab-content">
+                <section class="actions" style="margin-top: 1rem;">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-module-input" placeholder="Cari judul modul atau sasaran angkatan...">
+                    </div>
+                    <button class="btn btn-primary role-manager-only" id="btn-add-module">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload Modul Baru
+                    </button>
+                </section>
+
+                <div class="modules-grid" id="modules-container"></div>
+            </div>
+
+            <!-- VIEW 3: DAFTAR USER -->
+            <div id="view-users" class="tab-content">
+                <section class="table-container" style="margin-top: 1.5rem;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nama Pengguna</th>
+                                <th>Email</th>
+                                <th>Hak Akses (Role)</th>
+                                <th id="th-user-action">Aksi Ubah Role</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-table-body"></tbody>
+                    </table>
+                </section>
+            </div>
+
+        </div>
+
+        <!-- Modal Form Input/Edit Laporan Mentoring -->
+        <div class="modal-overlay" id="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 id="modal-title">Tambah Laporan Mentoring</h3>
+                    <button class="btn-close" id="btn-close-modal">&times;</button>
+                </div>
+                <form id="mentoring-form">
+                    <input type="hidden" id="report-id">
+                    
+                    <div class="form-group">
+                        <label for="mentor-name">Nama Mentor</label>
+                        <input type="text" id="mentor-name" required placeholder="Contoh: Ahmad Fauzi">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="member-count">Jumlah Anggota</label>
+                        <input type="number" id="member-count" min="1" required placeholder="Contoh: 8">
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="fakultas">Fakultas</label>
+                            <input type="text" id="fakultas" required placeholder="Contoh: MIPA / Teknik">
+                        </div>
+                        <div class="form-group">
+                            <label for="prodi">Program Studi</label>
+                            <input type="text" id="prodi" required placeholder="Contoh: Pendidikan Komputer">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="angkatan">Angkatan</label>
+                        <input type="number" id="angkatan" min="2000" max="2030" required placeholder="Contoh: 2024">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="materi">Materi yang Disampaikan</label>
+                        <textarea id="materi" rows="3" required placeholder="Contoh: Manajemen Waktu & Kepemimpinan Dasar"></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel">Batal</button>
+                        <button type="submit" class="btn btn-primary">Simpan Laporan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal Upload Modul Materi -->
+        <div class="modal-overlay" id="modal-module-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-file-circle-plus"></i> Upload Modul Mentoring</h3>
+                    <button class="btn-close" id="btn-close-module-modal">&times;</button>
+                </div>
+                <form id="module-form">
+                    <div class="form-group">
+                        <label for="module-title">Judul Modul / Materi</label>
+                        <input type="text" id="module-title" required placeholder="Contoh: Panduan Mentoring Kebangsaan">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="module-target">Sasaran Angkatan / Tingkat</label>
+                        <input type="text" id="module-target" required placeholder="Contoh: Angkatan 2024 / Tingkat 1">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="module-desc">Deskripsi Singkat</label>
+                        <textarea id="module-desc" rows="3" placeholder="Penjelasan singkat mengenai materi ini..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="module-file">Pilih File Modul (PDF, PPT, DOCX, dll)</label>
+                        <input type="file" id="module-file" required>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-module">Batal</button>
+                        <button type="submit" class="btn btn-primary">Upload Modul</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
