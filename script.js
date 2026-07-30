@@ -120,6 +120,7 @@ function showAuthForm(targetForm) {
 }
 
 // 1. REGISTRASI AKUN KE SUPABASE
+// REGISTRASI AKUN (PERBAIKAN METADATA & PROFILE)
 registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSubmit = document.getElementById('btn-submit-reg');
@@ -140,28 +141,50 @@ registerForm.addEventListener('submit', async (e) => {
     }
 
     try {
-        // A. SignUp User di Supabase Auth
+        // 1. Mendaftarkan User ke Supabase Auth beserta Metadata
         const { data: authData, error: authError } = await _supabase.auth.signUp({
-            email,
-            password
+            email: email,
+            password: password,
+            options: {
+                data: {
+                    name: name,
+                    role: role
+                }
+            }
         });
 
         if (authError) throw authError;
 
+        // Cek jika email sudah pernah terdaftar sebelumnya
+        if (authData.user && authData.user.identities && authData.user.identities.length === 0) {
+            alert('Email ini sudah terdaftar! Silakan langsung login atau reset password.');
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "Daftar Akun";
+            return;
+        }
+
+        // 2. Pastikan Profile di-update/dibuat ulang secara tegas jika Trigger belum sempat memproses metadata
         if (authData.user) {
-            // B. Simpan data tambahan profil & role ke tabel `profiles`
             const { error: profileError } = await _supabase
                 .from('profiles')
-                .insert([
-                    { id: authData.user.id, name, email, role }
-                ]);
+                .upsert([
+                    {
+                        id: authData.user.id,
+                        name: name,
+                        email: email,
+                        role: role
+                    }
+                ], { onConflict: 'id' });
 
-            if (profileError) throw profileError;
-
-            alert('Registrasi berhasil! Silakan login.');
-            registerForm.reset();
-            showAuthForm(loginForm);
+            if (profileError) {
+                console.warn('Upsert profile fallback:', profileError.message);
+            }
         }
+
+        alert(`Registrasi berhasil! Akun dibuat sebagai [${role}]. Silakan login.`);
+        registerForm.reset();
+        showAuthForm(loginForm);
+
     } catch (err) {
         alert('Gagal Registrasi: ' + err.message);
     } finally {
@@ -169,6 +192,56 @@ registerForm.addEventListener('submit', async (e) => {
         btnSubmit.textContent = "Daftar Akun";
     }
 });
+
+// registerForm.addEventListener('submit', async (e) => {
+//     e.preventDefault();
+//     const btnSubmit = document.getElementById('btn-submit-reg');
+//     btnSubmit.disabled = true;
+//     btnSubmit.textContent = "Mendaftarkan...";
+
+//     const name = document.getElementById('reg-name').value.trim();
+//     const email = document.getElementById('reg-email').value.trim();
+//     const role = document.getElementById('reg-role').value;
+//     const password = document.getElementById('reg-password').value;
+//     const confirmPassword = document.getElementById('reg-confirm-password').value;
+
+//     if (password !== confirmPassword) {
+//         alert('Password dan Konfirmasi Password tidak cocok!');
+//         btnSubmit.disabled = false;
+//         btnSubmit.textContent = "Daftar Akun";
+//         return;
+//     }
+
+//     try {
+//         // A. SignUp User di Supabase Auth
+//         const { data: authData, error: authError } = await _supabase.auth.signUp({
+//             email,
+//             password
+//         });
+
+//         if (authError) throw authError;
+
+//         if (authData.user) {
+//             // B. Simpan data tambahan profil & role ke tabel `profiles`
+//             const { error: profileError } = await _supabase
+//                 .from('profiles')
+//                 .insert([
+//                     { id: authData.user.id, name, email, role }
+//                 ]);
+
+//             if (profileError) throw profileError;
+
+//             alert('Registrasi berhasil! Silakan login.');
+//             registerForm.reset();
+//             showAuthForm(loginForm);
+//         }
+//     } catch (err) {
+//         alert('Gagal Registrasi: ' + err.message);
+//     } finally {
+//         btnSubmit.disabled = false;
+//         btnSubmit.textContent = "Daftar Akun";
+//     }
+// });
 
 // 2. LOGIN DENGAN SUPABASE
 loginForm.addEventListener('submit', async (e) => {
