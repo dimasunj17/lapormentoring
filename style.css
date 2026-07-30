@@ -417,6 +417,7 @@ th {
     text-overflow: ellipsis;
 }
 
+/* ================= OVERLAY & MODAL SCROLLABLE ================= */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -428,6 +429,49 @@ th {
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    padding: 1rem; /* Jarak aman dari pinggir layar HP/Browser */
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal {
+    background: var(--card-bg);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh; /* Maksimal tinggi modal 90% dari tinggi browser */
+    display: flex;
+    flex-direction: column; /* Membagi modal menjadi Header, Body, & Footer */
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    overflow: hidden; /* Menjaga agar sudut rounded tidak terpotong */
+}
+
+.modal-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--card-bg);
+}
+
+/* AREA FORM ISI (Bisa di-scroll jika konten panjang) */
+.modal-body {
+    padding: 1.5rem;
+    overflow-y: auto; /* Aktifkan scrollbar internal hanya di area form */
+    flex: 1;
+}
+
+/* AREA TOMBOL FOOTER (Dikunci di bawah / Sticky) */
+.modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border-color);
+    background: #f8fafc;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
 }
 
 .modal-overlay.active {

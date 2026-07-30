@@ -183,6 +183,22 @@
                 </section>
 
                 <section class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Mentor</th>
+                <th>Waktu & Tempat</th>
+                <th>Jml Anggota</th>
+                <th>Fakultas / Prodi</th>
+                <th>Angkatan</th>
+                <th>Materi Disampaikan</th>
+                <th class="role-write-only">Aksi</th>
+            </tr>
+        </thead>
+        <tbody id="report-table-body"></tbody>
+    </table>
+</section>
+                <!-- <section class="table-container">
                     <table>
                         <thead>
                             <tr>
@@ -196,7 +212,7 @@
                         </thead>
                         <tbody id="report-table-body"></tbody>
                     </table>
-                </section>
+                </section> -->
             </div>
 
             <!-- VIEW 2: MODUL & MATERI MENTORING -->
@@ -234,7 +250,93 @@
         </div>
 
         <!-- Modal Form Input/Edit Laporan Mentoring -->
-        <div class="modal-overlay" id="modal-overlay">
+         <!-- MODAL FORM LAPORAN MENTORING -->
+<!-- MODAL FORM LAPORAN MENTORING -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-title">Tambah Laporan Mentoring</h3>
+            <button class="btn-close" id="btn-close-modal">&times;</button>
+        </div>
+
+        <form id="mentoring-form" style="display: flex; flex-direction: column; overflow: hidden; height: 100%;">
+            <!-- BAGIAN BODY (BISA DI-SCROLL) -->
+            <div class="modal-body">
+                <input type="hidden" id="report-id">
+                
+                <div class="form-group">
+                    <label for="mentor-name">Nama Mentor</label>
+                    <input type="text" id="mentor-name" required placeholder="Contoh: Ahmad Fauzi">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="mentoring-date">Tanggal Mentoring</label>
+                        <input type="date" id="mentoring-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="mentoring-time">Waktu Sesi</label>
+                        <input type="time" id="mentoring-time" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Tempat / Lokasi Execusi</label>
+                    <input type="text" id="location" required placeholder="Contoh: Masjid Kampus / Ruang L.102 / Google Meet">
+                </div>
+
+                <!-- PRESENSI ANGGOTA DINAMIS -->
+                <div class="form-group">
+                    <label style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Daftar Anggota & Ceklis Kehadiran</span>
+                        <small style="color: var(--primary-color); font-weight: bold;" id="display-auto-count">Total Hadir: 0 Orang</small>
+                    </label>
+                    
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <input type="text" id="input-new-member" placeholder="Ketik nama anggota binaan..." style="flex: 1;">
+                        <button type="button" class="btn btn-secondary" id="btn-add-member-list" style="padding: 0.5rem 1rem;">
+                            <i class="fa-solid fa-plus"></i> Tambah
+                        </button>
+                    </div>
+
+                    <div id="members-checklist-container" style="max-height: 140px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; background: #fafafa;">
+                        <p id="empty-members-msg" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0;">
+                            Belum ada anggota ditambahkan.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fakultas">Fakultas</label>
+                        <input type="text" id="fakultas" required placeholder="Contoh: MIPA / Teknik">
+                    </div>
+                    <div class="form-group">
+                        <label for="prodi">Program Studi</label>
+                        <input type="text" id="prodi" required placeholder="Contoh: Pendidikan Komputer">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="angkatan">Angkatan</label>
+                    <input type="number" id="angkatan" min="2000" max="2030" required placeholder="Contoh: 2024">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="materi">Materi yang Disampaikan</label>
+                    <textarea id="materi" rows="3" required placeholder="Contoh: Manajemen Waktu & Kepemimpinan Dasar"></textarea>
+                </div>
+            </div>
+
+            <!-- BAGIAN FOOTER (DIKUNCI DI BAHWAH) -->
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btn-cancel">Batal</button>
+                <button type="submit" class="btn btn-primary">Simpan Laporan</button>
+            </div>
+        </form>
+    </div>
+</div>
+        <!-- <div class="modal-overlay" id="modal-overlay">
             <div class="modal">
                 <div class="modal-header">
                     <h3 id="modal-title">Tambah Laporan Mentoring</h3>
@@ -280,7 +382,7 @@
                     </div>
                 </form>
             </div>
-        </div>
+        </div> -->
 
         <!-- Modal Upload Modul Materi -->
         <div class="modal-overlay" id="modal-module-overlay">
