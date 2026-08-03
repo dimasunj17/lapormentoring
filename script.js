@@ -353,6 +353,10 @@ async function loadAllData() {
         // Panggil fungsi render & update
         renderTable();
         updateDashboard();
+        // ===================================================
+        // TAMBAHKAN PEMANGGILAN FUNGSI GRAFIK DI SINI:
+        renderKeterlaksanaanChart(); 
+        // ===================================================
 
         // 2. Fetch Modul jika elemennya ada
         if (typeof renderModules === 'function') {
@@ -936,19 +940,62 @@ function renderTable(dataToRender = reports) {
     tableBody.innerHTML = '';
     const isViewer = currentUserData && currentUserData.role === 'Viewer';
 
-    if (dataToRender.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="${isViewer ? '5' : '6'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
+    if (!dataToRender || dataToRender.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
         return;
     }
 
     dataToRender.forEach((item) => {
+        // 1. Olah Format Tanggal
+        let dateFormatted = '-';
+        if (item.mentoring_date) {
+            try {
+                dateFormatted = new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+            } catch (e) {
+                dateFormatted = item.mentoring_date;
+            }
+        }
+
+        // 2. Olah Format Jam
+        const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '';
+        const dateTimeText = timeFormatted ? `${dateFormatted}, ${timeFormatted}` : dateFormatted;
+
+        // 3. Olah Format Lokasi
+        const locationText = item.location || 'Lokasi belum diisi';
+
         const row = document.createElement('tr');
+        
+        // PERHATIKAN URUTAN TD DI BAWAH INI (SANGAT PENTING):
         row.innerHTML = `
-            <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
-            <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
-            <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
-            <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
-            <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
+            <!-- TD 1: MENTOR -->
+            <td><strong>${escapeHtml(item.mentor_name || '-')}</strong></td>
+
+            <!-- TD 2: WAKTU & TEMPAT (INILAH YANG SEBELUMNYA HILANG) -->
+            <td>
+                <div style="font-size: 0.9rem; font-weight: 500;">
+                    <i class="fa-regular fa-calendar-days" style="color: var(--primary-color);"></i> ${escapeHtml(dateTimeText)}
+                </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 2px;">
+                    <i class="fa-solid fa-location-dot" style="color: #ef4444;"></i> ${escapeHtml(locationText)}
+                </small>
+            </td>
+
+            <!-- TD 3: JML ANGGOTA -->
+            <td><i class="fa-solid fa-user-group"></i> ${item.member_count || 0} Orang</td>
+
+            <!-- TD 4: FAKULTAS / PRODI -->
+            <td>
+                <div>${escapeHtml(item.prodi || '-')}</div>
+                <small style="color: var(--text-muted);">${escapeHtml(item.fakultas || '-')}</small>
+            </td>
+
+            <!-- TD 5: ANGKATAN -->
+            <td><span class="badge-angkatan">${escapeHtml(item.angkatan || '-')}</span></td>
+
+            <!-- TD 6: MATERI DISAMPAIKAN -->
+            <td><div class="materi-preview" title="${escapeHtml(item.materi || '')}">${escapeHtml(item.materi || '-')}</div></td>
+
+            <!-- TD 7: AKSI -->
             ${isViewer ? '' : `
             <td>
                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
@@ -1202,3 +1249,133 @@ function closeModal() {
 }
 // function closeModal() { modalOverlay.classList.remove('active'); mentoringForm.reset(); document.getElementById('report-id').value = ''; }
 function escapeHtml(str) { return str ? str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)) : ''; }
+
+// ==========================================================================
+// --- GRAFIK KETERLAKSANAAN MENTORING (CHART.JS) ---
+// ==========================================================================
+
+let keterlaksanaanChartInstance = null;
+
+// Event Listener untuk Filter Grafik
+const chartRangeFilter = document.getElementById('chart-range-filter');
+const chartGroupFilter = document.getElementById('chart-group-filter');
+
+if (chartRangeFilter && chartGroupFilter) {
+    chartRangeFilter.addEventListener('change', renderKeterlaksanaanChart);
+    chartGroupFilter.addEventListener('change', renderKeterlaksanaanChart);
+}
+
+// Fungsi Utama Membuat Grafik Keterlaksanaan
+function renderKeterlaksanaanChart() {
+    const canvas = document.getElementById('keterlaksanaanChart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const range = chartRangeFilter ? chartRangeFilter.value : '6M';
+    const group = chartGroupFilter ? chartGroupFilter.value : 'monthly';
+
+    // 1. Filter Data Berdasarkan Rentang Waktu (1M, 6M, 1Y)
+    const now = new Date();
+    let startDate = new Date();
+
+    if (range === '1M') {
+        startDate.setMonth(now.getMonth() - 1);
+    } else if (range === '6M') {
+        startDate.setMonth(now.getMonth() - 6);
+    } else if (range === '1Y') {
+        startDate.setFullYear(now.getFullYear() - 1);
+    }
+
+    // Filter data laporan sesuai rentang tanggal
+    const filteredReports = reports.filter(r => {
+        if (!r.mentoring_date) return false;
+        const rDate = new Date(r.mentoring_date);
+        return rDate >= startDate && rDate <= now;
+    });
+
+    // 2. Kelompokkan Data (Sort Per Pekan / Per Bulan)
+    const groupedData = {};
+
+    filteredReports.forEach(r => {
+        const date = new Date(r.mentoring_date);
+        let key = '';
+
+        if (group === 'monthly') {
+            key = date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+        } else {
+            const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+            const weekNo = Math.ceil((((date - firstDayOfMonth) / 86400000) + firstDayOfMonth.getDay() + 1) / 7);
+            const monthLabel = date.toLocaleDateString('id-ID', { month: 'short' });
+            key = `Pekan ${weekNo} (${monthLabel})`;
+        }
+
+        if (!groupedData[key]) {
+            groupedData[key] = {
+                totalSesi: 0,
+                totalHadir: 0
+            };
+        }
+
+        groupedData[key].totalSesi += 1;
+        groupedData[key].totalHadir += (parseInt(r.member_count) || 0);
+    });
+
+    // Susun Label & Dataset
+    const labels = Object.keys(groupedData);
+    const datasetSesi = labels.map(k => groupedData[k].totalSesi);
+    const datasetHadir = labels.map(k => groupedData[k].totalHadir);
+
+    // 3. Hapus Instance Chart Lama Agar Tidak Bertumpuk
+    if (keterlaksanaanChartInstance) {
+        keterlaksanaanChartInstance.destroy();
+    }
+
+    // 4. Inisialisasi Chart Baru
+    keterlaksanaanChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels.length > 0 ? labels : ['Belum Ada Data'],
+            datasets: [
+                {
+                    label: 'Total Sesi Mentoring',
+                    data: datasetSesi.length > 0 ? datasetSesi : [0],
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3
+                },
+                {
+                    label: 'Total Anggota Hadir',
+                    data: datasetHadir.length > 0 ? datasetHadir : [0],
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+}

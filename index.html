@@ -2,6 +2,8 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <!-- Library Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Informasi Mentoring - Supabase DB</title>
     <link rel="stylesheet" href="style.css">
@@ -166,6 +168,39 @@
                         <i class="fa-solid fa-book-open card-icon"></i>
                     </div>
                 </section>
+
+                <!-- KARTU GRAFIK KETERLAKSANAAN -->
+<section style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 1.5rem; margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+            <h3 style="font-size: 1.1rem; color: var(--text-color); font-weight: 700;">
+                <i class="fa-solid fa-chart-line" style="color: var(--primary-color);"></i> Grafik Keterlaksanaan Mentoring
+            </h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Visualisasi tren kegiatan mentoring dan kehadiran anggota</p>
+        </div>
+
+        <!-- CONTROL FILTER JANGKA WAKTU & TIPE TAMPILAN -->
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <!-- Filter Rentang Waktu -->
+            <select id="chart-range-filter" style="padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.875rem;">
+                <option value="1M">1 Bulan Terakhir</option>
+                <option value="6M" selected>6 Bulan Terakhir</option>
+                <option value="1Y">1 Tahun Terakhir</option>
+            </select>
+
+            <!-- Filter Kelompok / Sort Per -->
+            <select id="chart-group-filter" style="padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.875rem;">
+                <option value="weekly">Sort Per Pekan (Mingguan)</option>
+                <option value="monthly" selected>Sort Per Bulan (Bulanan)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- CANVAS GRAFIK CHART.JS -->
+    <div style="position: relative; height: 320px; width: 100%;">
+        <canvas id="keterlaksanaanChart"></canvas>
+    </div>
+</section>
 
                 <section class="actions">
                     <div class="search-box">
