@@ -13,6 +13,8 @@ let reports = [];
 let modules = [];
 let usersList = [];
 let currentFilteredReports = [];
+let currentReportAttendees = []; // Array menampung { name: string, isPresent: boolean }
+let keterlaksanaanChartInstance = null;
 
 // --- DOM ELEMENTS ---
 const authSection = document.getElementById('auth-section');
@@ -56,6 +58,12 @@ const btnCloseModal = document.getElementById('btn-close-modal');
 const btnCancel = document.getElementById('btn-cancel');
 const btnExportExcel = document.getElementById('btn-export-excel');
 
+// Presensi Anggota Elements
+const inputNewMember = document.getElementById('input-new-member');
+const btnAddMemberList = document.getElementById('btn-add-member-list');
+const membersChecklistContainer = document.getElementById('members-checklist-container');
+const displayAutoCount = document.getElementById('display-auto-count');
+
 // Modul Elements
 const btnAddModule = document.getElementById('btn-add-module');
 const modalModuleOverlay = document.getElementById('modal-module-overlay');
@@ -70,19 +78,42 @@ const statTotalMentors = document.getElementById('stat-total-mentors');
 const statTotalMembers = document.getElementById('stat-total-members');
 const statTotalMaterials = document.getElementById('stat-total-materials');
 
+// Chart Elements
+const chartRangeFilter = document.getElementById('chart-range-filter');
+const chartGroupFilter = document.getElementById('chart-group-filter');
+
+// --- HELPER FUNCTIONS ---
+function escapeHtml(str) { 
+    return str ? str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)) : ''; 
+}
+
+function openModal(title = 'Tambah Laporan Mentoring') { 
+    if (modalTitle) modalTitle.textContent = title; 
+    if (modalOverlay) modalOverlay.classList.add('active'); 
+}
+
+function closeModal() {
+    if (modalOverlay) modalOverlay.classList.remove('active');
+    if (mentoringForm) mentoringForm.reset();
+    
+    const reportIdInput = document.getElementById('report-id');
+    if (reportIdInput) reportIdInput.value = '';
+    
+    currentReportAttendees = [];
+    renderAttendeesChecklist();
+}
+
 // --- INIT ---
 document.addEventListener('DOMContentLoaded', async () => {
     checkSession();
 });
 
 // --- AUTHENTICATION & SESSION MANAGEMENT ---
-
 async function checkSession() {
     const { data: { session } } = await _supabase.auth.getSession();
 
     if (session) {
-        // Fetch user profile & role
-        const { data: profile, error } = await _supabase
+        const { data: profile } = await _supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
@@ -107,10 +138,10 @@ async function checkSession() {
     }
 }
 
-linkToRegister.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(registerForm); });
-linkToLoginFromReg.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(loginForm); });
-linkToForgot.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(forgotForm); });
-linkToLoginFromForgot.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(loginForm); });
+if (linkToRegister) linkToRegister.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(registerForm); });
+if (linkToLoginFromReg) linkToLoginFromReg.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(loginForm); });
+if (linkToForgot) linkToForgot.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(forgotForm); });
+if (linkToLoginFromForgot) linkToLoginFromForgot.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(loginForm); });
 
 function showAuthForm(targetForm) {
     loginForm.classList.remove('active');
@@ -119,178 +150,116 @@ function showAuthForm(targetForm) {
     targetForm.classList.add('active');
 }
 
-// 1. REGISTRASI AKUN KE SUPABASE
-// REGISTRASI AKUN (PERBAIKAN METADATA & PROFILE)
-registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btnSubmit = document.getElementById('btn-submit-reg');
-    btnSubmit.disabled = true;
-    btnSubmit.textContent = "Mendaftarkan...";
+// REGISTRASI AKUN
+if (registerForm) {
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btnSubmit = document.getElementById('btn-submit-reg');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Mendaftarkan...";
 
-    const name = document.getElementById('reg-name').value.trim();
-    const email = document.getElementById('reg-email').value.trim();
-    const role = document.getElementById('reg-role').value;
-    const password = document.getElementById('reg-password').value;
-    const confirmPassword = document.getElementById('reg-confirm-password').value;
+        const name = document.getElementById('reg-name').value.trim();
+        const email = document.getElementById('reg-email').value.trim();
+        const role = document.getElementById('reg-role').value;
+        const password = document.getElementById('reg-password').value;
+        const confirmPassword = document.getElementById('reg-confirm-password').value;
 
-    if (password !== confirmPassword) {
-        alert('Password dan Konfirmasi Password tidak cocok!');
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = "Daftar Akun";
-        return;
-    }
-
-    try {
-        // 1. Mendaftarkan User ke Supabase Auth beserta Metadata
-        const { data: authData, error: authError } = await _supabase.auth.signUp({
-            email: email,
-            password: password,
-            options: {
-                data: {
-                    name: name,
-                    role: role
-                }
-            }
-        });
-
-        if (authError) throw authError;
-
-        // Cek jika email sudah pernah terdaftar sebelumnya
-        if (authData.user && authData.user.identities && authData.user.identities.length === 0) {
-            alert('Email ini sudah terdaftar! Silakan langsung login atau reset password.');
+        if (password !== confirmPassword) {
+            alert('Password dan Konfirmasi Password tidak cocok!');
             btnSubmit.disabled = false;
             btnSubmit.textContent = "Daftar Akun";
             return;
         }
 
-        // 2. Pastikan Profile di-update/dibuat ulang secara tegas jika Trigger belum sempat memproses metadata
-        if (authData.user) {
-            const { error: profileError } = await _supabase
-                .from('profiles')
-                .upsert([
-                    {
-                        id: authData.user.id,
-                        name: name,
-                        email: email,
-                        role: role
-                    }
-                ], { onConflict: 'id' });
+        try {
+            const { data: authData, error: authError } = await _supabase.auth.signUp({
+                email: email,
+                password: password,
+                options: { data: { name: name, role: role } }
+            });
 
-            if (profileError) {
-                console.warn('Upsert profile fallback:', profileError.message);
+            if (authError) throw authError;
+
+            if (authData.user && authData.user.identities && authData.user.identities.length === 0) {
+                alert('Email ini sudah terdaftar! Silakan langsung login atau reset password.');
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = "Daftar Akun";
+                return;
             }
+
+            if (authData.user) {
+                await _supabase.from('profiles').upsert([
+                    { id: authData.user.id, name: name, email: email, role: role }
+                ], { onConflict: 'id' });
+            }
+
+            alert(`Registrasi berhasil! Akun dibuat sebagai [${role}]. Silakan login.`);
+            registerForm.reset();
+            showAuthForm(loginForm);
+
+        } catch (err) {
+            alert('Gagal Registrasi: ' + err.message);
+        } finally {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "Daftar Akun";
         }
+    });
+}
 
-        alert(`Registrasi berhasil! Akun dibuat sebagai [${role}]. Silakan login.`);
-        registerForm.reset();
-        showAuthForm(loginForm);
+// LOGIN
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btnSubmit = document.getElementById('btn-submit-login');
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Memeriksa...";
 
-    } catch (err) {
-        alert('Gagal Registrasi: ' + err.message);
-    } finally {
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = "Daftar Akun";
-    }
-});
+        const email = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
 
-// registerForm.addEventListener('submit', async (e) => {
-//     e.preventDefault();
-//     const btnSubmit = document.getElementById('btn-submit-reg');
-//     btnSubmit.disabled = true;
-//     btnSubmit.textContent = "Mendaftarkan...";
+        try {
+            const { error } = await _supabase.auth.signInWithPassword({ email, password });
+            if (error) throw error;
 
-//     const name = document.getElementById('reg-name').value.trim();
-//     const email = document.getElementById('reg-email').value.trim();
-//     const role = document.getElementById('reg-role').value;
-//     const password = document.getElementById('reg-password').value;
-//     const confirmPassword = document.getElementById('reg-confirm-password').value;
+            loginForm.reset();
+            checkSession();
+        } catch (err) {
+            alert('Login Gagal! Email atau password salah.');
+        } finally {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "Masuk";
+        }
+    });
+}
 
-//     if (password !== confirmPassword) {
-//         alert('Password dan Konfirmasi Password tidak cocok!');
-//         btnSubmit.disabled = false;
-//         btnSubmit.textContent = "Daftar Akun";
-//         return;
-//     }
+// LOGOUT
+if (btnLogout) {
+    btnLogout.addEventListener('click', async () => {
+        if (confirm('Keluar dari sistem?')) {
+            await _supabase.auth.signOut();
+            checkSession();
+        }
+    });
+}
 
-//     try {
-//         // A. SignUp User di Supabase Auth
-//         const { data: authData, error: authError } = await _supabase.auth.signUp({
-//             email,
-//             password
-//         });
+// RESET PASSWORD
+if (forgotForm) {
+    forgotForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('forgot-email').value.trim();
 
-//         if (authError) throw authError;
+        try {
+            const { error } = await _supabase.auth.resetPasswordForEmail(email);
+            if (error) throw error;
+            alert('Link reset password telah dikirim ke email Anda.');
+            showAuthForm(loginForm);
+        } catch (err) {
+            alert('Gagal: ' + err.message);
+        }
+    });
+}
 
-//         if (authData.user) {
-//             // B. Simpan data tambahan profil & role ke tabel `profiles`
-//             const { error: profileError } = await _supabase
-//                 .from('profiles')
-//                 .insert([
-//                     { id: authData.user.id, name, email, role }
-//                 ]);
-
-//             if (profileError) throw profileError;
-
-//             alert('Registrasi berhasil! Silakan login.');
-//             registerForm.reset();
-//             showAuthForm(loginForm);
-//         }
-//     } catch (err) {
-//         alert('Gagal Registrasi: ' + err.message);
-//     } finally {
-//         btnSubmit.disabled = false;
-//         btnSubmit.textContent = "Daftar Akun";
-//     }
-// });
-
-// 2. LOGIN DENGAN SUPABASE
-loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btnSubmit = document.getElementById('btn-submit-login');
-    btnSubmit.disabled = true;
-    btnSubmit.textContent = "Memeriksa...";
-
-    const email = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value;
-
-    try {
-        const { error } = await _supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-
-        loginForm.reset();
-        checkSession();
-    } catch (err) {
-        alert('Login Gagal! Email atau password salah.');
-    } finally {
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = "Masuk";
-    }
-});
-
-// 3. LOGOUT
-btnLogout.addEventListener('click', async () => {
-    if (confirm('Keluar dari sistem?')) {
-        await _supabase.auth.signOut();
-        checkSession();
-    }
-});
-
-// 4. RESET PASSWORD VIA EMAIL
-forgotForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('forgot-email').value.trim();
-
-    try {
-        const { error } = await _supabase.auth.resetPasswordForEmail(email);
-        if (error) throw error;
-        alert('Link reset password telah dikirim ke email Anda.');
-        showAuthForm(loginForm);
-    } catch (err) {
-        alert('Gagal: ' + err.message);
-    }
-});
-
-// --- PERMISSIONS CONTROL ---
+// PERMISSIONS CONTROL
 function applyRolePermissions() {
     const isViewer = currentUserData.role === 'Viewer';
     const isAdminSuper = currentUserData.role === 'Admin Super';
@@ -312,34 +281,32 @@ function applyRolePermissions() {
     }
 }
 
-// --- TABS NAVIGATION ---
-tabReportsBtn.addEventListener('click', () => switchTab('reports'));
-tabModulesBtn.addEventListener('click', () => switchTab('modules'));
-tabUsersBtn.addEventListener('click', () => switchTab('users'));
+// TABS NAVIGATION
+if (tabReportsBtn) tabReportsBtn.addEventListener('click', () => switchTab('reports'));
+if (tabModulesBtn) tabModulesBtn.addEventListener('click', () => switchTab('modules'));
+if (tabUsersBtn) tabUsersBtn.addEventListener('click', () => switchTab('users'));
 
 function switchTab(tab) {
-    [tabReportsBtn, tabModulesBtn, tabUsersBtn].forEach(b => b.classList.remove('active'));
-    [viewReports, viewModules, viewUsers].forEach(v => v.classList.remove('active'));
+    [tabReportsBtn, tabModulesBtn, tabUsersBtn].forEach(b => b && b.classList.remove('active'));
+    [viewReports, viewModules, viewUsers].forEach(v => v && v.classList.remove('active'));
 
     if (tab === 'reports') {
-        tabReportsBtn.classList.add('active');
-        viewReports.classList.add('active');
+        if (tabReportsBtn) tabReportsBtn.classList.add('active');
+        if (viewReports) viewReports.classList.add('active');
     } else if (tab === 'modules') {
-        tabModulesBtn.classList.add('active');
-        viewModules.classList.add('active');
+        if (tabModulesBtn) tabModulesBtn.classList.add('active');
+        if (viewModules) viewModules.classList.add('active');
     } else if (tab === 'users') {
-        tabUsersBtn.classList.add('active');
-        viewUsers.classList.add('active');
+        if (tabUsersBtn) tabUsersBtn.classList.add('active');
+        if (viewUsers) viewUsers.classList.add('active');
     }
 }
 
-// --- FETCH DATA FROM SUPABASE DATABASE ---
+// --- LOAD ALL DATA FROM SUPABASE ---
 async function loadAllData() {
     try {
-        // 1. Fetch Laporan Mentoring dari Supabase
         let query = _supabase.from('reports').select('*');
 
-        // Jika Role Mentor, hanya ambil laporannya sendiri
         if (currentUserData && currentUserData.role === 'Mentor') {
             query = query.eq('user_id', currentUserData.id);
         }
@@ -350,22 +317,18 @@ async function loadAllData() {
 
         reports = reportsData || [];
         
-        // Panggil fungsi render & update
         renderTable();
         updateDashboard();
-        // ===================================================
-        // TAMBAHKAN PEMANGGILAN FUNGSI GRAFIK DI SINI:
-        renderKeterlaksanaanChart(); 
-        // ===================================================
+        renderKeterlaksanaanChart();
 
-        // 2. Fetch Modul jika elemennya ada
+        // Load Modules
         if (typeof renderModules === 'function') {
             const { data: modulesData } = await _supabase.from('modules').select('*').order('created_at', { ascending: false });
             modules = modulesData || [];
             renderModules();
         }
 
-        // 3. Fetch Users jika Role Admin Super / Pengelola
+        // Load Users jika Admin/Pengelola
         if (currentUserData && (currentUserData.role === 'Admin Super' || currentUserData.role === 'Pengelola')) {
             if (typeof renderUserTable === 'function') {
                 const { data: profilesData } = await _supabase.from('profiles').select('*');
@@ -377,63 +340,35 @@ async function loadAllData() {
         console.error('Error loadAllData:', err.message);
     }
 }
-// async function loadAllData() {
-//     // 1. Fetch Reports
-//     const { data: reportsData } = await _supabase.from('reports').select('*').order('created_at', { ascending: false });
-//     reports = reportsData || [];
-//     renderTable();
-//     updateDashboard();
 
-//     // 2. Fetch Modules
-//     const { data: modulesData } = await _supabase.from('modules').select('*').order('created_at', { ascending: false });
-//     modules = modulesData || [];
-//     renderModules();
-
-//     // 3. Fetch Users (Khusus Admin/Pengelola)
-//     if (currentUserData.role === 'Admin Super' || currentUserData.role === 'Pengelola') {
-//         const { data: profilesData } = await _supabase.from('profiles').select('*');
-//         usersList = profilesData || [];
-//         renderUserTable();
-//     }
-// }
-
-// --- CRUD LAPORAN MENTORING (SUPABASE) ---
-
-// --- MANAJEMEN DAFTAR ANGGOTA & CEKLIS KEHADIRAN (DINAMIS) ---
-let currentReportAttendees = []; // Array menampung { name: string, isPresent: boolean }
-
-const inputNewMember = document.getElementById('input-new-member');
-const btnAddMemberList = document.getElementById('btn-add-member-list');
-const membersChecklistContainer = document.getElementById('members-checklist-container');
-const displayAutoCount = document.getElementById('display-auto-count');
-
-// Event Handler Tambah Nama Anggota ke Daftar Ceklis
-btnAddMemberList.addEventListener('click', addMemberToChecklist);
-inputNewMember.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        addMemberToChecklist();
-    }
-});
+// --- PRESENSI ANGGOTA DINAMIS ---
+if (btnAddMemberList) btnAddMemberList.addEventListener('click', addMemberToChecklist);
+if (inputNewMember) {
+    inputNewMember.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addMemberToChecklist();
+        }
+    });
+}
 
 function addMemberToChecklist() {
+    if (!inputNewMember) return;
     const name = inputNewMember.value.trim();
     if (!name) return;
 
-    // Cek duplikasi nama
     if (currentReportAttendees.some(m => m.name.toLowerCase() === name.toLowerCase())) {
         alert('Nama anggota tersebut sudah ada di daftar!');
         return;
     }
 
-    // Default anggota baru langsung dicentang (Hadir)
     currentReportAttendees.push({ name: name, isPresent: true });
     inputNewMember.value = '';
     renderAttendeesChecklist();
 }
 
-// Render UI Daftar Ceklis Anggota
 function renderAttendeesChecklist() {
+    if (!membersChecklistContainer) return;
     membersChecklistContainer.innerHTML = '';
 
     if (currentReportAttendees.length === 0) {
@@ -452,10 +387,10 @@ function renderAttendeesChecklist() {
 
         itemDiv.innerHTML = `
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0; font-size: 0.9rem; flex: 1;">
-                <input type="checkbox" ${member.isPresent ? 'checked' : ''} onchange="toggleAttendance(${index})">
+                <input type="checkbox" ${member.isPresent ? 'checked' : ''} onchange="window.toggleAttendance(${index})">
                 <span style="${member.isPresent ? 'font-weight: 600;' : 'color: #94a3b8; text-decoration: line-through;'}">${escapeHtml(member.name)}</span>
             </label>
-            <button type="button" class="btn-action btn-delete" onclick="removeMemberFromChecklist(${index})" title="Hapus Anggota" style="font-size: 0.85rem;">
+            <button type="button" class="btn-action btn-delete" onclick="window.removeMemberFromChecklist(${index})" title="Hapus Anggota" style="font-size: 0.85rem;">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         `;
@@ -476,31 +411,32 @@ window.removeMemberFromChecklist = function(index) {
 };
 
 function updateAttendanceCount() {
+    if (!displayAutoCount) return;
     const presentCount = currentReportAttendees.filter(m => m.isPresent).length;
     displayAutoCount.textContent = `Total Hadir: ${presentCount} Orang`;
 }
 
+// --- CRUD LAPORAN MENTORING ---
+if (btnAdd) {
+    btnAdd.addEventListener('click', () => {
+        currentReportAttendees = [];
+        renderAttendeesChecklist();
+        
+        // Auto-fill tanggal hari ini & jam sekarang
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date().toTimeString().split(' ')[0].substring(0, 5);
+        if (document.getElementById('mentoring-date')) document.getElementById('mentoring-date').value = today;
+        if (document.getElementById('mentoring-time')) document.getElementById('mentoring-time').value = now;
 
-// --- CRUD LAPORAN MENTORING (SUPABASE INTEGRATION) ---
+        openModal('Tambah Laporan Mentoring');
+    });
+}
 
-btnAdd.addEventListener('click', () => {
-    currentReportAttendees = []; // Reset array presensi
-    renderAttendeesChecklist(); // Kosongkan tampilan checklist di modal
-    openModal('Tambah Laporan Mentoring');
-});
+if (btnCloseModal) btnCloseModal.addEventListener('click', closeModal);
+if (btnCancel) btnCancel.addEventListener('click', closeModal);
+if (mentoringForm) mentoringForm.addEventListener('submit', handleFormSubmit);
+if (searchInput) searchInput.addEventListener('input', handleSearch);
 
-// btnAdd.addEventListener('click', () => {
-//     currentReportAttendees = []; // Reset list saat tambah baru
-//     renderAttendeesChecklist();
-//     openModal('Tambah Laporan Mentoring');
-// });
-
-btnCloseModal.addEventListener('click', closeModal);
-btnCancel.addEventListener('click', closeModal);
-mentoringForm.addEventListener('submit', handleFormSubmit);
-searchInput.addEventListener('input', handleSearch);
-
-// --- 1. HANDLE SUBMIT FORM LAPORAN ---
 async function handleFormSubmit(e) {
     e.preventDefault();
 
@@ -558,7 +494,7 @@ async function handleFormSubmit(e) {
     }
 }
 
-// --- 2. RENDER TABEL DENGAN WAKTU & TEMPAT ---
+// RENDER TABEL UTAMA
 function renderTable(dataToRender = reports) {
     if (!tableBody) return;
     tableBody.innerHTML = '';
@@ -570,7 +506,6 @@ function renderTable(dataToRender = reports) {
     }
 
     dataToRender.forEach((item) => {
-        // Formatter Tanggal
         let dateFormatted = '-';
         if (item.mentoring_date) {
             try {
@@ -580,10 +515,9 @@ function renderTable(dataToRender = reports) {
             }
         }
 
-        // Formatter Jam & Lokasi
         const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '';
         const dateTimeText = timeFormatted ? `${dateFormatted}, ${timeFormatted}` : dateFormatted;
-        const locationText = item.location || 'Lokasi tidak diisi';
+        const locationText = item.location || 'Lokasi belum diisi';
 
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -592,8 +526,12 @@ function renderTable(dataToRender = reports) {
 
             <!-- 2. WAKTU & TEMPAT -->
             <td>
-                <div><i class="fa-regular fa-calendar-days"></i> ${escapeHtml(dateTimeText)}</div>
-                <small style="color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(locationText)}</small>
+                <div style="font-size: 0.9rem; font-weight: 500;">
+                    <i class="fa-regular fa-calendar-days" style="color: var(--primary-color);"></i> ${escapeHtml(dateTimeText)}
+                </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 2px;">
+                    <i class="fa-solid fa-location-dot" style="color: #ef4444;"></i> ${escapeHtml(locationText)}
+                </small>
             </td>
 
             <!-- 3. JML ANGGOTA -->
@@ -614,442 +552,41 @@ function renderTable(dataToRender = reports) {
             <!-- 7. AKSI -->
             ${isViewer ? '' : `
             <td>
-                <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-                <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                <button type="button" class="btn-action btn-edit" onclick="window.editReport('${item.id}')" title="Edit Laporan">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button type="button" class="btn-action btn-delete" onclick="window.deleteReport('${item.id}')" title="Hapus Laporan">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
             </td>
             `}
         `;
         tableBody.appendChild(row);
     });
 }
-// function renderTable(dataToRender = reports) {
-//     if (!tableBody) return;
-//     tableBody.innerHTML = '';
-//     const isViewer = currentUserData && currentUserData.role === 'Viewer';
 
-//     if (dataToRender.length === 0) {
-//         tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
-//         return;
-//     }
-
-//     dataToRender.forEach((item) => {
-//         // Format Tampilan Tanggal & Waktu
-//         const dateFormatted = item.mentoring_date ? new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
-//         const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '-';
-//         const locationText = item.location || '-';
-
-//         const row = document.createElement('tr');
-//         row.innerHTML = `
-//             <!-- 1. KOLOM MENTOR -->
-//             <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
-
-//             <!-- 2. KOLOM WAKTU & TEMPAT (Terganti di sini sebelumnya) -->
-//             <td>
-//                 <div><i class="fa-regular fa-calendar-days"></i> ${dateFormatted} (${timeFormatted})</div>
-//                 <small style="color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(locationText)}</small>
-//             </td>
-
-//             <!-- 3. KOLOM JML ANGGOTA -->
-//             <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
-
-//             <!-- 4. KOLOM FAKULTAS / PRODI -->
-//             <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
-
-//             <!-- 5. KOLOM ANGKATAN -->
-//             <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
-
-//             <!-- 6. KOLOM MATERI DISAMPAIKAN -->
-//             <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
-
-//             <!-- 7. KOLOM AKSI -->
-//             ${isViewer ? '' : `
-//             <td>
-//                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-//                 <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-//             </td>
-//             `}
-//         `;
-//         tableBody.appendChild(row);
-//     });
-// }
-// function renderTable(dataToRender = reports) {
-//     if (!tableBody) return;
-//     tableBody.innerHTML = '';
-//     const isViewer = currentUserData && currentUserData.role === 'Viewer';
-
-//     if (dataToRender.length === 0) {
-//         tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
-//         return;
-//     }
-
-//     dataToRender.forEach((item) => {
-//         // Format Tampilan Tanggal & Waktu (misal: 12 Jan 2026, 14:00 WIB)
-//         const dateFormatted = item.mentoring_date ? new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
-//         const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '-';
-//         const locationText = item.location || '-';
-
-//         const row = document.createElement('tr');
-//         row.innerHTML = `
-//             <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
-//             <td>
-//                 <div><i class="fa-regular fa-calendar-days"></i> ${dateFormatted} (${timeFormatted})</div>
-//                 <small style="color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(locationText)}</small>
-//             </td>
-//             <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
-//             <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
-//             <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
-//             <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
-//             ${isViewer ? '' : `
-//             <td>
-//                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-//                 <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-//             </td>
-//             `}
-//         `;
-//         tableBody.appendChild(row);
-//     });
-// }
-
-// --- 3. EDIT LAPORAN (LOAD DATA TANGGAL, JAM, & TEMPAT) ---
+// EDIT LAPORAN
 window.editReport = function(id) {
-    const report = reports.find(r => r.id === id);
-    if (!report) return;
+    const report = reports.find(r => String(r.id) === String(id));
+    if (!report) return alert('Data laporan tidak ditemukan!');
 
     document.getElementById('report-id').value = report.id;
-    document.getElementById('mentor-name').value = report.mentor_name;
+    document.getElementById('mentor-name').value = report.mentor_name || '';
     document.getElementById('mentoring-date').value = report.mentoring_date || '';
     document.getElementById('mentoring-time').value = report.mentoring_time || '';
     document.getElementById('location').value = report.location || '';
-    document.getElementById('fakultas').value = report.fakultas;
-    document.getElementById('prodi').value = report.prodi;
-    document.getElementById('angkatan').value = report.angkatan;
-    document.getElementById('materi').value = report.materi;
+    document.getElementById('fakultas').value = report.fakultas || '';
+    document.getElementById('prodi').value = report.prodi || '';
+    document.getElementById('angkatan').value = report.angkatan || '';
+    document.getElementById('materi').value = report.materi || '';
 
-    currentReportAttendees = Array.isArray(report.attendees) ? report.attendees : [];
+    currentReportAttendees = Array.isArray(report.attendees) ? [...report.attendees] : [];
     renderAttendeesChecklist();
 
     openModal('Edit Laporan Mentoring');
 };
 
-// --- 4. EXPORT KE EXCEL DENGAN WAKTU & TEMPAT ---
-if (btnExportExcel) {
-    btnExportExcel.addEventListener('click', () => {
-        const dataToExport = currentFilteredReports.length > 0 ? currentFilteredReports : reports;
-        if (dataToExport.length === 0) return alert('Tidak ada data laporan untuk diekspor!');
-
-        const excelData = dataToExport.map((item, index) => ({
-            "No": index + 1,
-            "Nama Mentor": item.mentor_name,
-            "Tanggal Mentoring": item.mentoring_date || '-',
-            "Waktu": item.mentoring_time || '-',
-            "Tempat / Lokasi": item.location || '-',
-            "Jumlah Anggota Hadir": item.member_count,
-            "Fakultas": item.fakultas,
-            "Program Studi": item.prodi,
-            "Angkatan": item.angkatan,
-            "Materi Disampaikan": item.materi
-        }));
-
-        const worksheet = XLSX.utils.json_to_sheet(excelData);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Mentoring");
-        XLSX.writeFile(workbook, `Laporan_Mentoring_${new Date().toISOString().split('T')[0]}.xlsx`);
-    });
-}
-
-// Set Default Tanggal Hari Ini Saat Buka Modal Tambah Laporan
-btnAdd.addEventListener('click', () => {
-    currentReportAttendees = [];
-    renderAttendeesChecklist();
-    
-    // Auto-fill tanggal hari ini & jam sekarang
-    const today = new Date().toISOString().split('T')[0];
-    const now = new Date().toTimeString().split(' ')[0].substring(0, 5);
-    document.getElementById('mentoring-date').value = today;
-    document.getElementById('mentoring-time').value = now;
-
-    openModal('Tambah Laporan Mentoring');
-});
-
-// async function handleFormSubmit(e) {
-//     e.preventDefault();
-
-//     // 1. Cek apakah user sedang terautentikasi / login
-//     if (!currentUserData || !currentUserData.id) {
-//         alert('Sesi Anda telah berakhir. Silakan login kembali.');
-//         return;
-//     }
-
-//     // 2. Cek apakah nama anggota sudah diisi
-//     if (!Array.isArray(currentReportAttendees) || currentReportAttendees.length === 0) {
-//         alert('Silakan tambahkan minimal 1 nama anggota binaan di bagian ceklis terlebih dahulu!');
-//         return;
-//     }
-
-//     const btnSubmit = e.target.querySelector('button[type="submit"]');
-//     const originalBtnText = btnSubmit.textContent;
-//     btnSubmit.disabled = true;
-//     btnSubmit.textContent = "Menyimpan...";
-
-//     const id = document.getElementById('report-id').value;
-//     const presentMembersCount = currentReportAttendees.filter(m => m.isPresent).length;
-
-//     // Susun payload data yang akan dikirim ke Supabase
-//     const reportData = {
-//         mentor_name: document.getElementById('mentor-name').value.trim(),
-//         member_count: presentMembersCount,
-//         attendees: currentReportAttendees,
-//         fakultas: document.getElementById('fakultas').value.trim(),
-//         prodi: document.getElementById('prodi').value.trim(),
-//         angkatan: document.getElementById('angkatan').value.trim(),
-//         materi: document.getElementById('materi').value.trim(),
-//         user_id: currentUserData.id
-//     };
-
-//     try {
-//         if (id) {
-//             // Update Laporan
-//             const { error } = await _supabase.from('reports').update(reportData).eq('id', id);
-//             if (error) throw error;
-//             alert('Laporan berhasil diperbarui!');
-//         } else {
-//             // Tambah Laporan Baru
-//             const { error } = await _supabase.from('reports').insert([reportData]);
-//             if (error) throw error;
-//             alert('Laporan berhasil disimpan!');
-//         }
-
-//         closeModal();
-//         await loadAllData(); // Refresh data dari Supabase
-//     } catch (err) {
-//         console.error('Error simpan laporan:', err);
-//         alert('Gagal menyimpan laporan: ' + (err.message || 'Terjadi kesalahan sistem'));
-//     } finally {
-//         btnSubmit.disabled = false;
-//         btnSubmit.textContent = originalBtnText;
-//     }
-// }
-
-// async function handleFormSubmit(e) {
-//     e.preventDefault();
-
-//     if (currentReportAttendees.length === 0) {
-//         alert('Silakan tambahkan minimal 1 nama anggota binaan terlebih dahulu!');
-//         return;
-//     }
-
-//     const id = document.getElementById('report-id').value;
-//     const presentMembersCount = currentReportAttendees.filter(m => m.isPresent).length;
-
-//     const reportData = {
-//         mentor_name: document.getElementById('mentor-name').value.trim(),
-//         member_count: presentMembersCount, // Jumlah terhitung otomatis dari ceklis
-//         attendees: currentReportAttendees, // Array nama & status kehadiran tersimpan di DB
-//         fakultas: document.getElementById('fakultas').value.trim(),
-//         prodi: document.getElementById('prodi').value.trim(),
-//         angkatan: document.getElementById('angkatan').value.trim(),
-//         materi: document.getElementById('materi').value.trim(),
-//         user_id: currentUserData.id
-//     };
-//     try {
-//         if (id) {
-//             const { error } = await _supabase.from('reports').update(reportData).eq('id', id);
-//             if (error) throw error;
-//         } else {
-//             const { error } = await _supabase.from('reports').insert([reportData]);
-//             if (error) throw error;
-//         }
-
-//         closeModal();
-//         loadAllData();
-//     } catch (err) {
-//         alert('Gagal menyimpan laporan: ' + err.message);
-//     }
-// }
-
-// Edit Laporan (Memuat kembali daftar nama anggota yang tersimpan)
-window.editReport = function(id) {
-    const report = reports.find(r => r.id === id);
-    if (!report) return;
-
-    document.getElementById('report-id').value = report.id;
-    document.getElementById('mentor-name').value = report.mentor_name;
-    document.getElementById('fakultas').value = report.fakultas;
-    document.getElementById('prodi').value = report.prodi;
-    document.getElementById('angkatan').value = report.angkatan;
-    document.getElementById('materi').value = report.materi;
-
-    // Load data presensi anggota yang ada di DB
-    currentReportAttendees = Array.isArray(report.attendees) ? report.attendees : [];
-    renderAttendeesChecklist();
-
-    openModal('Edit Laporan Mentoring');
-};
-
-window.deleteReport = async function(id) {
-    if (confirm('Apakah Anda yakin ingin menghapus laporan ini?')) {
-        try {
-            const { error } = await _supabase.from('reports').delete().eq('id', id);
-            if (error) throw error;
-            loadAllData();
-        } catch (err) {
-            alert('Gagal menghapus: ' + err.message);
-        }
-    }
-};
-
-// btnAdd.addEventListener('click', () => openModal('Tambah Laporan Mentoring'));
-// btnCloseModal.addEventListener('click', closeModal);
-// btnCancel.addEventListener('click', closeModal);
-// mentoringForm.addEventListener('submit', handleFormSubmit);
-// searchInput.addEventListener('input', handleSearch);
-
-// async function handleFormSubmit(e) {
-//     e.preventDefault();
-
-//     const id = document.getElementById('report-id').value;
-//     const reportData = {
-//         mentor_name: document.getElementById('mentor-name').value.trim(),
-//         member_count: parseInt(document.getElementById('member-count').value),
-//         fakultas: document.getElementById('fakultas').value.trim(),
-//         prodi: document.getElementById('prodi').value.trim(),
-//         angkatan: document.getElementById('angkatan').value.trim(),
-//         materi: document.getElementById('materi').value.trim()
-//     };
-
-//     try {
-//         if (id) {
-//             // Update Data
-//             const { error } = await _supabase.from('reports').update(reportData).eq('id', id);
-//             if (error) throw error;
-//         } else {
-//             // Insert Data Baru
-//             const { error } = await _supabase.from('reports').insert([reportData]);
-//             if (error) throw error;
-//         }
-
-//         closeModal();
-//         loadAllData();
-//     } catch (err) {
-//         alert('Gagal menyimpan laporan: ' + err.message);
-//     }
-// }
-
-function renderTable(dataToRender = reports) {
-    if (!tableBody) return;
-    tableBody.innerHTML = '';
-    const isViewer = currentUserData && currentUserData.role === 'Viewer';
-
-    if (!dataToRender || dataToRender.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
-        return;
-    }
-
-    dataToRender.forEach((item) => {
-        // 1. Olah Format Tanggal
-        let dateFormatted = '-';
-        if (item.mentoring_date) {
-            try {
-                dateFormatted = new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-            } catch (e) {
-                dateFormatted = item.mentoring_date;
-            }
-        }
-
-        // 2. Olah Format Jam
-        const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '';
-        const dateTimeText = timeFormatted ? `${dateFormatted}, ${timeFormatted}` : dateFormatted;
-
-        // 3. Olah Format Lokasi
-        const locationText = item.location || 'Lokasi belum diisi';
-
-        const row = document.createElement('tr');
-        
-        // PERHATIKAN URUTAN TD DI BAWAH INI (SANGAT PENTING):
-        row.innerHTML = `
-            <!-- TD 1: MENTOR -->
-            <td><strong>${escapeHtml(item.mentor_name || '-')}</strong></td>
-
-            <!-- TD 2: WAKTU & TEMPAT (INILAH YANG SEBELUMNYA HILANG) -->
-            <td>
-                <div style="font-size: 0.9rem; font-weight: 500;">
-                    <i class="fa-regular fa-calendar-days" style="color: var(--primary-color);"></i> ${escapeHtml(dateTimeText)}
-                </div>
-                <small style="color: var(--text-muted); display: block; margin-top: 2px;">
-                    <i class="fa-solid fa-location-dot" style="color: #ef4444;"></i> ${escapeHtml(locationText)}
-                </small>
-            </td>
-
-            <!-- TD 3: JML ANGGOTA -->
-            <td><i class="fa-solid fa-user-group"></i> ${item.member_count || 0} Orang</td>
-
-            <!-- TD 4: FAKULTAS / PRODI -->
-            <td>
-                <div>${escapeHtml(item.prodi || '-')}</div>
-                <small style="color: var(--text-muted);">${escapeHtml(item.fakultas || '-')}</small>
-            </td>
-
-            <!-- TD 5: ANGKATAN -->
-            <td><span class="badge-angkatan">${escapeHtml(item.angkatan || '-')}</span></td>
-
-            <!-- TD 6: MATERI DISAMPAIKAN -->
-            <td><div class="materi-preview" title="${escapeHtml(item.materi || '')}">${escapeHtml(item.materi || '-')}</div></td>
-
-            <!-- TD 7: AKSI -->
-            ${isViewer ? '' : `
-            <td>
-                <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-                <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-            </td>
-            `}
-        `;
-        tableBody.appendChild(row);
-    });
-}
-
-// function renderTable(dataToRender = reports) {
-//     tableBody.innerHTML = '';
-//     const isViewer = currentUserData.role === 'Viewer';
-
-//     if (dataToRender.length === 0) {
-//         tableBody.innerHTML = `<tr><td colspan="${isViewer ? '5' : '6'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
-//         return;
-//     }
-
-//     dataToRender.forEach((item) => {
-//         const row = document.createElement('tr');
-//         row.innerHTML = `
-//             <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
-//             <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
-//             <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
-//             <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
-//             <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
-//             ${isViewer ? '' : `
-//             <td>
-//                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-//                 <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-//             </td>
-//             `}
-//         `;
-//         tableBody.appendChild(row);
-//     });
-// }
-
-window.editReport = function(id) {
-    const report = reports.find(r => r.id === id);
-    if (!report) return;
-
-    document.getElementById('report-id').value = report.id;
-    document.getElementById('mentor-name').value = report.mentor_name;
-    document.getElementById('member-count').value = report.member_count;
-    document.getElementById('fakultas').value = report.fakultas;
-    document.getElementById('prodi').value = report.prodi;
-    document.getElementById('angkatan').value = report.angkatan;
-    document.getElementById('materi').value = report.materi;
-
-    openModal('Edit Laporan Mentoring');
-};
-
+// HAPUS LAPORAN
 window.deleteReport = async function(id) {
     if (confirm('Apakah Anda yakin ingin menghapus laporan ini?')) {
         try {
@@ -1063,73 +600,76 @@ window.deleteReport = async function(id) {
 };
 
 function updateDashboard() {
-    statTotalMentors.textContent = reports.length;
+    if (statTotalMentors) statTotalMentors.textContent = reports.length;
     const totalMembers = reports.reduce((acc, curr) => acc + parseInt(curr.member_count || 0), 0);
-    statTotalMembers.textContent = totalMembers;
-    const uniqueMaterials = new Set(reports.map(r => r.materi.trim().toLowerCase())).size;
-    statTotalMaterials.textContent = uniqueMaterials;
+    if (statTotalMembers) statTotalMembers.textContent = totalMembers;
+    const uniqueMaterials = new Set(reports.map(r => (r.materi || '').trim().toLowerCase())).size;
+    if (statTotalMaterials) statTotalMaterials.textContent = uniqueMaterials;
 }
 
 function handleSearch(e) {
     const query = e.target.value.toLowerCase();
     currentFilteredReports = reports.filter(r => 
-        r.mentor_name.toLowerCase().includes(query) ||
-        r.fakultas.toLowerCase().includes(query) ||
-        r.prodi.toLowerCase().includes(query) ||
-        r.angkatan.toString().includes(query) ||
-        r.materi.toLowerCase().includes(query)
+        (r.mentor_name || '').toLowerCase().includes(query) ||
+        (r.fakultas || '').toLowerCase().includes(query) ||
+        (r.prodi || '').toLowerCase().includes(query) ||
+        (r.angkatan || '').toString().includes(query) ||
+        (r.materi || '').toLowerCase().includes(query)
     );
     renderTable(currentFilteredReports);
 }
 
-// --- MODUL LOGIC (SUPABASE DATABASE) ---
-btnAddModule.addEventListener('click', () => modalModuleOverlay.classList.add('active'));
-btnCloseModuleModal.addEventListener('click', () => modalModuleOverlay.classList.remove('active'));
-btnCancelModule.addEventListener('click', () => modalModuleOverlay.classList.remove('active'));
-searchModuleInput.addEventListener('input', handleSearchModule);
+// --- MODUL LOGIC ---
+if (btnAddModule) btnAddModule.addEventListener('click', () => modalModuleOverlay.classList.add('active'));
+if (btnCloseModuleModal) btnCloseModuleModal.addEventListener('click', () => modalModuleOverlay.classList.remove('active'));
+if (btnCancelModule) btnCancelModule.addEventListener('click', () => modalModuleOverlay.classList.remove('active'));
+if (searchModuleInput) searchModuleInput.addEventListener('input', handleSearchModule);
 
-moduleForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fileInput = document.getElementById('module-file');
-    if (fileInput.files.length === 0) return alert('Pilih file terlebih dahulu!');
+if (moduleForm) {
+    moduleForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById('module-file');
+        if (fileInput.files.length === 0) return alert('Pilih file terlebih dahulu!');
 
-    const file = fileInput.files[0];
-    const reader = new FileReader();
+        const file = fileInput.files[0];
+        const reader = new FileReader();
 
-    reader.onload = async function(event) {
-        try {
-            const modulePayload = {
-                title: document.getElementById('module-title').value.trim(),
-                target: document.getElementById('module-target').value.trim(),
-                description: document.getElementById('module-desc').value.trim(),
-                file_name: file.name,
-                file_data: event.target.result,
-                uploader: currentUserData.name
-            };
+        reader.onload = async function(event) {
+            try {
+                const modulePayload = {
+                    title: document.getElementById('module-title').value.trim(),
+                    target: document.getElementById('module-target').value.trim(),
+                    description: document.getElementById('module-desc').value.trim(),
+                    file_name: file.name,
+                    file_data: event.target.result,
+                    uploader: currentUserData.name
+                };
 
-            const { error } = await _supabase.from('modules').insert([modulePayload]);
-            if (error) throw error;
+                const { error } = await _supabase.from('modules').insert([modulePayload]);
+                if (error) throw error;
 
-            moduleForm.reset();
-            modalModuleOverlay.classList.remove('active');
-            alert('Modul berhasil disimpan ke Supabase Database!');
-            loadAllData();
-        } catch (err) {
-            alert('Gagal upload modul: ' + err.message);
-        }
-    };
+                moduleForm.reset();
+                modalModuleOverlay.classList.remove('active');
+                alert('Modul berhasil disimpan ke Supabase Database!');
+                loadAllData();
+            } catch (err) {
+                alert('Gagal upload modul: ' + err.message);
+            }
+        };
 
-    reader.readAsDataURL(file);
-});
+        reader.readAsDataURL(file);
+    });
+}
 
 function renderModules(dataToRender = modules) {
+    if (!modulesContainer) return;
     modulesContainer.innerHTML = '';
     if (dataToRender.length === 0) {
         modulesContainer.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">Belum ada modul di-upload.</p>`;
         return;
     }
 
-    const isManagerOrAdmin = currentUserData.role === 'Admin Super' || currentUserData.role === 'Pengelola';
+    const isManagerOrAdmin = currentUserData && (currentUserData.role === 'Admin Super' || currentUserData.role === 'Pengelola');
 
     dataToRender.forEach(mod => {
         const card = document.createElement('div');
@@ -1143,7 +683,7 @@ function renderModules(dataToRender = modules) {
             </div>
             <div class="module-actions">
                 <a href="${mod.file_data}" download="${escapeHtml(mod.file_name)}" class="btn btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;"><i class="fa-solid fa-download"></i> Unduh File</a>
-                ${isManagerOrAdmin ? `<button class="btn-action btn-delete" onclick="deleteModule('${mod.id}')"><i class="fa-solid fa-trash"></i></button>` : ''}
+                ${isManagerOrAdmin ? `<button class="btn-action btn-delete" onclick="window.deleteModule('${mod.id}')"><i class="fa-solid fa-trash"></i></button>` : ''}
             </div>
         `;
         modulesContainer.appendChild(card);
@@ -1165,18 +705,19 @@ window.deleteModule = async function(id) {
 function handleSearchModule(e) {
     const query = e.target.value.toLowerCase();
     const filtered = modules.filter(m => 
-        m.title.toLowerCase().includes(query) ||
-        m.target.toLowerCase().includes(query) ||
-        m.uploader.toLowerCase().includes(query)
+        (m.title || '').toLowerCase().includes(query) ||
+        (m.target || '').toLowerCase().includes(query) ||
+        (m.uploader || '').toLowerCase().includes(query)
     );
     renderModules(filtered);
 }
 
-// --- USER MANAGEMENT (UBAH ROLE DI SUPABASE) ---
+// --- USER MANAGEMENT ---
 function renderUserTable() {
+    if (!userTableBody) return;
     userTableBody.innerHTML = '';
-    const isAdminSuper = currentUserData.role === 'Admin Super';
-    thUserAction.style.display = isAdminSuper ? '' : 'none';
+    const isAdminSuper = currentUserData && currentUserData.role === 'Admin Super';
+    if (thUserAction) thUserAction.style.display = isAdminSuper ? '' : 'none';
 
     usersList.forEach(user => {
         const row = document.createElement('tr');
@@ -1189,7 +730,7 @@ function renderUserTable() {
             ${isAdminSuper ? `
             <td>
                 ${isSelf ? '-' : `
-                    <select onchange="changeUserRole('${user.id}', this.value)" style="padding: 0.3rem;">
+                    <select onchange="window.changeUserRole('${user.id}', this.value)" style="padding: 0.3rem;">
                         <option value="Mentor" ${user.role === 'Mentor' ? 'selected' : ''}>Mentor</option>
                         <option value="Pengelola" ${user.role === 'Pengelola' ? 'selected' : ''}>Pengelola</option>
                         <option value="Viewer" ${user.role === 'Viewer' ? 'selected' : ''}>Viewer</option>
@@ -1216,56 +757,37 @@ window.changeUserRole = async function(userId, newRole) {
 };
 
 // --- EXPORT TO EXCEL ---
-btnExportExcel.addEventListener('click', () => {
-    const dataToExport = currentFilteredReports.length > 0 ? currentFilteredReports : reports;
-    if (dataToExport.length === 0) return alert('Tidak ada data laporan untuk diekspor!');
+if (btnExportExcel) {
+    btnExportExcel.addEventListener('click', () => {
+        const dataToExport = currentFilteredReports.length > 0 ? currentFilteredReports : reports;
+        if (dataToExport.length === 0) return alert('Tidak ada data laporan untuk diekspor!');
 
-    const excelData = dataToExport.map((item, index) => ({
-        "No": index + 1,
-        "Nama Mentor": item.mentor_name,
-        "Jumlah Anggota": item.member_count,
-        "Fakultas": item.fakultas,
-        "Program Studi": item.prodi,
-        "Angkatan": item.angkatan,
-        "Materi Disampaikan": item.materi
-    }));
+        const excelData = dataToExport.map((item, index) => ({
+            "No": index + 1,
+            "Nama Mentor": item.mentor_name,
+            "Tanggal Mentoring": item.mentoring_date || '-',
+            "Waktu": item.mentoring_time || '-',
+            "Tempat / Lokasi": item.location || '-',
+            "Jumlah Anggota Hadir": item.member_count,
+            "Fakultas": item.fakultas,
+            "Program Studi": item.prodi,
+            "Angkatan": item.angkatan,
+            "Materi Disampaikan": item.materi
+        }));
 
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Mentoring");
-    XLSX.writeFile(workbook, `Laporan_Mentoring_${new Date().toISOString().split('T')[0]}.xlsx`);
-});
-
-// Helper Modal & Escape HTML
-function openModal(title) { modalTitle.textContent = title; modalOverlay.classList.add('active'); }
-function closeModal() {
-    modalOverlay.classList.remove('active');
-    mentoringForm.reset();
-    document.getElementById('report-id').value = '';
-    currentReportAttendees = [];
-    if (typeof renderAttendeesChecklist === 'function') {
-        renderAttendeesChecklist();
-    }
+        const worksheet = XLSX.utils.json_to_sheet(excelData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Mentoring");
+        XLSX.writeFile(workbook, `Laporan_Mentoring_${new Date().toISOString().split('T')[0]}.xlsx`);
+    });
 }
-// function closeModal() { modalOverlay.classList.remove('active'); mentoringForm.reset(); document.getElementById('report-id').value = ''; }
-function escapeHtml(str) { return str ? str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)) : ''; }
 
-// ==========================================================================
 // --- GRAFIK KETERLAKSANAAN MENTORING (CHART.JS) ---
-// ==========================================================================
-
-let keterlaksanaanChartInstance = null;
-
-// Event Listener untuk Filter Grafik
-const chartRangeFilter = document.getElementById('chart-range-filter');
-const chartGroupFilter = document.getElementById('chart-group-filter');
-
 if (chartRangeFilter && chartGroupFilter) {
     chartRangeFilter.addEventListener('change', renderKeterlaksanaanChart);
     chartGroupFilter.addEventListener('change', renderKeterlaksanaanChart);
 }
 
-// Fungsi Utama Membuat Grafik Keterlaksanaan
 function renderKeterlaksanaanChart() {
     const canvas = document.getElementById('keterlaksanaanChart');
     if (!canvas) return;
@@ -1274,7 +796,6 @@ function renderKeterlaksanaanChart() {
     const range = chartRangeFilter ? chartRangeFilter.value : '6M';
     const group = chartGroupFilter ? chartGroupFilter.value : 'monthly';
 
-    // 1. Filter Data Berdasarkan Rentang Waktu (1M, 6M, 1Y)
     const now = new Date();
     let startDate = new Date();
 
@@ -1286,14 +807,12 @@ function renderKeterlaksanaanChart() {
         startDate.setFullYear(now.getFullYear() - 1);
     }
 
-    // Filter data laporan sesuai rentang tanggal
     const filteredReports = reports.filter(r => {
         if (!r.mentoring_date) return false;
         const rDate = new Date(r.mentoring_date);
         return rDate >= startDate && rDate <= now;
     });
 
-    // 2. Kelompokkan Data (Sort Per Pekan / Per Bulan)
     const groupedData = {};
 
     filteredReports.forEach(r => {
@@ -1310,27 +829,21 @@ function renderKeterlaksanaanChart() {
         }
 
         if (!groupedData[key]) {
-            groupedData[key] = {
-                totalSesi: 0,
-                totalHadir: 0
-            };
+            groupedData[key] = { totalSesi: 0, totalHadir: 0 };
         }
 
         groupedData[key].totalSesi += 1;
         groupedData[key].totalHadir += (parseInt(r.member_count) || 0);
     });
 
-    // Susun Label & Dataset
     const labels = Object.keys(groupedData);
     const datasetSesi = labels.map(k => groupedData[k].totalSesi);
     const datasetHadir = labels.map(k => groupedData[k].totalHadir);
 
-    // 3. Hapus Instance Chart Lama Agar Tidak Bertumpuk
     if (keterlaksanaanChartInstance) {
         keterlaksanaanChartInstance.destroy();
     }
 
-    // 4. Inisialisasi Chart Baru
     keterlaksanaanChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1360,21 +873,11 @@ function renderKeterlaksanaanChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'top',
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false
-                }
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
             },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        precision: 0
-                    }
-                }
+                y: { beginAtZero: true, ticks: { precision: 0 } }
             }
         }
     });
