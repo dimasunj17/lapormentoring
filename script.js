@@ -560,28 +560,54 @@ function renderTable(dataToRender = reports) {
     tableBody.innerHTML = '';
     const isViewer = currentUserData && currentUserData.role === 'Viewer';
 
-    if (dataToRender.length === 0) {
+    if (!dataToRender || dataToRender.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
         return;
     }
 
     dataToRender.forEach((item) => {
-        // Format Tampilan Tanggal & Waktu (misal: 12 Jan 2026, 14:00 WIB)
-        const dateFormatted = item.mentoring_date ? new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
-        const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '-';
-        const locationText = item.location || '-';
+        // Formatter Tanggal
+        let dateFormatted = '-';
+        if (item.mentoring_date) {
+            try {
+                dateFormatted = new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+            } catch (e) {
+                dateFormatted = item.mentoring_date;
+            }
+        }
+
+        // Formatter Jam & Lokasi
+        const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '';
+        const dateTimeText = timeFormatted ? `${dateFormatted}, ${timeFormatted}` : dateFormatted;
+        const locationText = item.location || 'Lokasi tidak diisi';
 
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
+            <!-- 1. MENTOR -->
+            <td><strong>${escapeHtml(item.mentor_name || '-')}</strong></td>
+
+            <!-- 2. WAKTU & TEMPAT -->
             <td>
-                <div><i class="fa-regular fa-calendar-days"></i> ${dateFormatted} (${timeFormatted})</div>
+                <div><i class="fa-regular fa-calendar-days"></i> ${escapeHtml(dateTimeText)}</div>
                 <small style="color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(locationText)}</small>
             </td>
-            <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
-            <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
-            <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
-            <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
+
+            <!-- 3. JML ANGGOTA -->
+            <td><i class="fa-solid fa-user-group"></i> ${item.member_count || 0} Orang</td>
+
+            <!-- 4. FAKULTAS / PRODI -->
+            <td>
+                <div>${escapeHtml(item.prodi || '-')}</div>
+                <small style="color: var(--text-muted);">${escapeHtml(item.fakultas || '-')}</small>
+            </td>
+
+            <!-- 5. ANGKATAN -->
+            <td><span class="badge-angkatan">${escapeHtml(item.angkatan || '-')}</span></td>
+
+            <!-- 6. MATERI DISAMPAIKAN -->
+            <td><div class="materi-preview" title="${escapeHtml(item.materi || '')}">${escapeHtml(item.materi || '-')}</div></td>
+
+            <!-- 7. AKSI -->
             ${isViewer ? '' : `
             <td>
                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
@@ -592,6 +618,93 @@ function renderTable(dataToRender = reports) {
         tableBody.appendChild(row);
     });
 }
+// function renderTable(dataToRender = reports) {
+//     if (!tableBody) return;
+//     tableBody.innerHTML = '';
+//     const isViewer = currentUserData && currentUserData.role === 'Viewer';
+
+//     if (dataToRender.length === 0) {
+//         tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
+//         return;
+//     }
+
+//     dataToRender.forEach((item) => {
+//         // Format Tampilan Tanggal & Waktu
+//         const dateFormatted = item.mentoring_date ? new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+//         const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '-';
+//         const locationText = item.location || '-';
+
+//         const row = document.createElement('tr');
+//         row.innerHTML = `
+//             <!-- 1. KOLOM MENTOR -->
+//             <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
+
+//             <!-- 2. KOLOM WAKTU & TEMPAT (Terganti di sini sebelumnya) -->
+//             <td>
+//                 <div><i class="fa-regular fa-calendar-days"></i> ${dateFormatted} (${timeFormatted})</div>
+//                 <small style="color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(locationText)}</small>
+//             </td>
+
+//             <!-- 3. KOLOM JML ANGGOTA -->
+//             <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
+
+//             <!-- 4. KOLOM FAKULTAS / PRODI -->
+//             <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
+
+//             <!-- 5. KOLOM ANGKATAN -->
+//             <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
+
+//             <!-- 6. KOLOM MATERI DISAMPAIKAN -->
+//             <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
+
+//             <!-- 7. KOLOM AKSI -->
+//             ${isViewer ? '' : `
+//             <td>
+//                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
+//                 <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+//             </td>
+//             `}
+//         `;
+//         tableBody.appendChild(row);
+//     });
+// }
+// function renderTable(dataToRender = reports) {
+//     if (!tableBody) return;
+//     tableBody.innerHTML = '';
+//     const isViewer = currentUserData && currentUserData.role === 'Viewer';
+
+//     if (dataToRender.length === 0) {
+//         tableBody.innerHTML = `<tr><td colspan="${isViewer ? '6' : '7'}" style="text-align: center; color: var(--text-muted);">Belum ada data laporan.</td></tr>`;
+//         return;
+//     }
+
+//     dataToRender.forEach((item) => {
+//         // Format Tampilan Tanggal & Waktu (misal: 12 Jan 2026, 14:00 WIB)
+//         const dateFormatted = item.mentoring_date ? new Date(item.mentoring_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+//         const timeFormatted = item.mentoring_time ? item.mentoring_time.substring(0, 5) + ' WIB' : '-';
+//         const locationText = item.location || '-';
+
+//         const row = document.createElement('tr');
+//         row.innerHTML = `
+//             <td><strong>${escapeHtml(item.mentor_name)}</strong></td>
+//             <td>
+//                 <div><i class="fa-regular fa-calendar-days"></i> ${dateFormatted} (${timeFormatted})</div>
+//                 <small style="color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(locationText)}</small>
+//             </td>
+//             <td><i class="fa-solid fa-user-group"></i> ${item.member_count} Orang</td>
+//             <td><div>${escapeHtml(item.prodi)}</div><small style="color: var(--text-muted);">${escapeHtml(item.fakultas)}</small></td>
+//             <td><span class="badge-angkatan">${escapeHtml(item.angkatan)}</span></td>
+//             <td><div class="materi-preview" title="${escapeHtml(item.materi)}">${escapeHtml(item.materi)}</div></td>
+//             ${isViewer ? '' : `
+//             <td>
+//                 <button class="btn-action btn-edit" onclick="editReport('${item.id}')" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
+//                 <button class="btn-action btn-delete" onclick="deleteReport('${item.id}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+//             </td>
+//             `}
+//         `;
+//         tableBody.appendChild(row);
+//     });
+// }
 
 // --- 3. EDIT LAPORAN (LOAD DATA TANGGAL, JAM, & TEMPAT) ---
 window.editReport = function(id) {
