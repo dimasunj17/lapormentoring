@@ -151,6 +151,7 @@ function showAuthForm(targetForm) {
 }
 
 // REGISTRASI AKUN
+// REGISTRASI AKUN (DENGAN FAKULTAS)
 if (registerForm) {
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -161,6 +162,7 @@ if (registerForm) {
         const name = document.getElementById('reg-name').value.trim();
         const email = document.getElementById('reg-email').value.trim();
         const role = document.getElementById('reg-role').value;
+        const fakultas = document.getElementById('reg-fakultas').value; // <-- BACA NILAI FAKULTAS
         const password = document.getElementById('reg-password').value;
         const confirmPassword = document.getElementById('reg-confirm-password').value;
 
@@ -175,7 +177,7 @@ if (registerForm) {
             const { data: authData, error: authError } = await _supabase.auth.signUp({
                 email: email,
                 password: password,
-                options: { data: { name: name, role: role } }
+                options: { data: { name: name, role: role, fakultas: fakultas } }
             });
 
             if (authError) throw authError;
@@ -187,13 +189,20 @@ if (registerForm) {
                 return;
             }
 
+            // Simpan Profil ke Supabase beserta Fakultasnya
             if (authData.user) {
                 await _supabase.from('profiles').upsert([
-                    { id: authData.user.id, name: name, email: email, role: role }
+                    { 
+                        id: authData.user.id, 
+                        name: name, 
+                        email: email, 
+                        role: role,
+                        fakultas: fakultas // <-- SIMPAN KE TABEL PROFILES
+                    }
                 ], { onConflict: 'id' });
             }
 
-            alert(`Registrasi berhasil! Akun dibuat sebagai [${role}]. Silakan login.`);
+            alert(`Registrasi berhasil! Akun dibuat sebagai [${role}] di [${fakultas}]. Silakan login.`);
             registerForm.reset();
             showAuthForm(loginForm);
 
@@ -303,13 +312,20 @@ function switchTab(tab) {
 }
 
 // --- LOAD ALL DATA FROM SUPABASE ---
+// LOAD DATA DENGAN PENTENANAN MULTITENANCY FAKULTAS
 async function loadAllData() {
     try {
         let query = _supabase.from('reports').select('*');
 
+        // 1. JIKA MENTOR: Hanya ambil laporannya sendiri
         if (currentUserData && currentUserData.role === 'Mentor') {
             query = query.eq('user_id', currentUserData.id);
         }
+        // 2. JIKA PENGELOLA FAKULTAS: Khusus saring laporan dari fakultasnya saja
+        else if (currentUserData && currentUserData.role === 'Pengelola' && currentUserData.fakultas) {
+            query = query.ilike('fakultas', `%${currentUserData.fakultas}%`);
+        }
+        // 3. ADMIN SUPER / VIEWER: Tidak difilter (Melihat seluruh 8 Fakultas)
 
         const { data: reportsData, error: reportsError } = await query.order('created_at', { ascending: false });
 
@@ -321,20 +337,24 @@ async function loadAllData() {
         updateDashboard();
         renderKeterlaksanaanChart();
 
-        // Load Modules
+        // Load Modul
         if (typeof renderModules === 'function') {
             const { data: modulesData } = await _supabase.from('modules').select('*').order('created_at', { ascending: false });
             modules = modulesData || [];
             renderModules();
         }
 
-        // Load Users jika Admin/Pengelola
+        // Load Users (Admin Super melihat semua, Pengelola hanya melihat user/mentor di fakultasnya)
         if (currentUserData && (currentUserData.role === 'Admin Super' || currentUserData.role === 'Pengelola')) {
-            if (typeof renderUserTable === 'function') {
-                const { data: profilesData } = await _supabase.from('profiles').select('*');
-                usersList = profilesData || [];
-                renderUserTable();
+            let userQuery = _supabase.from('profiles').select('*');
+            
+            if (currentUserData.role === 'Pengelola' && currentUserData.fakultas) {
+                userQuery = userQuery.ilike('fakultas', `%${currentUserData.fakultas}%`);
             }
+
+            const { data: profilesData } = await userQuery;
+            usersList = profilesData || [];
+            if (typeof renderUserTable === 'function') renderUserTable();
         }
     } catch (err) {
         console.error('Error loadAllData:', err.message);
