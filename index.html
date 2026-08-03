@@ -2,8 +2,15 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <title>SAPA Mentoring Squad - Satu Sapa, Satu Pertumbuhan</title>
+    
+    <!-- FAVICON LOGO DI TAB BROWSER -->
+    <link rel="icon" type="image/png" href="logo.jpeg">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
     <!-- Library Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Informasi Mentoring - Supabase DB</title>
     <link rel="stylesheet" href="style.css">
@@ -20,10 +27,17 @@
     <!-- ================= AUTH SECTION ================= -->
     <div class="auth-container" id="auth-section">
         <div class="auth-box">
+
+            <!-- DITARUH DI ATAS FORM LOGIN/REGISTRASI -->
+<div class="auth-header" style="text-align: center; margin-bottom: 1.5rem;">
+    <img src="logo.jpeg" alt="SAPA Mentoring Squad Logo" style="max-width: 140px; height: auto; margin-bottom: 0.5rem;">
+    <h2 style="color: var(--primary-color); font-weight: 700;">SAPA Mentoring Squad</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Satu Sapa, Satu Pertumbuhan</p>
+</div>
             
             <!-- FORM LOGIN -->
             <form id="login-form" class="auth-form active">
-                <h2><i class="fa-solid fa-shield-halved"></i> SIM-Mentoring</h2>
+                <!-- <h2><i class="fa-solid fa-shield-halved"></i> SIM-Mentoring</h2> -->
                 <p class="auth-subtitle">Masuk sesuai hak akses akun Anda</p>
 
                 <div class="form-group">
@@ -110,11 +124,20 @@
     <!-- ================= MAIN APP SECTION ================= -->
     <div id="app-section" class="app-hidden">
         
+        <!-- NAV HEADER DASHBOARD UTAMA -->
+</header>
         <!-- Navbar -->
         <header class="navbar">
             <div class="logo">
-                <i class="fa-solid fa-graduation-cap"></i>
-                <h2>SIM-Mentoring</h2>
+<header class="navbar" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: #ffffff; border-bottom: 1px solid var(--border-color);">
+    <div class="brand-logo" style="display: flex; align-items: center; gap: 0.75rem;">
+        <!-- FOTO LOGO -->
+        <img src="logo.jpeg" alt="Logo SAPA" style="width: 42px; height: 42px; object-fit: contain;">
+        <div>
+            <h1 style="font-size: 1.25rem; font-weight: 700; color: #065f46; margin: 0; line-height: 1.2;">SAPA Mentoring</h1>
+            <small style="color: #047857; font-size: 0.75rem; font-weight: 500;">Satu Sapa, Satu Pertumbuhan</small>
+        </div>
+    </div>
             </div>
             <div class="user-info">
                 <i class="fa-solid fa-circle-user"></i>
