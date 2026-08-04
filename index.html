@@ -45,13 +45,16 @@
                     <input type="email" id="login-email" required placeholder="email@domain.com">
                 </div>
 
-                <div class="form-group">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                        <label for="login-password" style="margin-bottom: 0;">Password</label>
-                        <a href="#" id="link-to-forgot" style="font-size: 0.8rem; color: var(--primary-color); text-decoration: none;">Lupa password?</a>
-                    </div>
-                    <input type="password" id="login-password" required placeholder="••••••••">
-                </div>
+<!-- DENGAN FITUR TOGGLE PASSWORD -->
+<div class="form-group">
+    <label for="login-password">Password</label>
+    <div style="position: relative; display: flex; align-items: center;">
+        <input type="password" id="login-password" required placeholder="Masukkan password Anda" style="padding-right: 2.5rem; width: 100%;">
+        
+        <!-- IKON MATA TOGGLE PASSWORD -->
+        <i class="fa-solid fa-eye" id="toggle-login-password" style="position: absolute; right: 10px; cursor: pointer; color: var(--text-muted); padding: 5px;"></i>
+    </div>
+</div>
 
                 <button type="submit" class="btn btn-primary btn-block" id="btn-submit-login">Masuk</button>
                 
@@ -409,6 +412,43 @@
                     <label for="angkatan">Angkatan</label>
                     <input type="number" id="angkatan" min="2000" max="2030" required placeholder="Contoh: 2024">
                 </div>
+
+<!-- ========================================================= -->
+            <!-- TARUH KODE PRESENSI & TOMBOL PRESET KELOMPOK DI SINI:      -->
+            <!-- ========================================================= -->
+            <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <label style="margin: 0;">Daftar Anggota & Ceklis Kehadiran</label>
+                    <div style="display: flex; gap: 0.4rem;">
+                        <!-- Tombol 1: Muat Anggota Binaan Saya -->
+                        <button type="button" class="btn btn-secondary" id="btn-load-preset-members" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: #0284c7; color: white; border: none;">
+                            <i class="fa-solid fa-arrows-rotate"></i> Muat Kelompok Saya
+                        </button>
+                        <small style="color: var(--primary-color); font-weight: bold; align-self: center;" id="display-auto-count">Total Hadir: 0 Orang</small>
+                    </div>
+                </div>
+                
+                <!-- Input Tambah Manual Jika Ada Tamu / Anggota Tambahan -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <input type="text" id="input-new-member" placeholder="Ketik nama anggota tambahan...">
+                    <button type="button" class="btn btn-secondary" id="btn-add-member-list" style="padding: 0.5rem 1rem;">
+                        <i class="fa-solid fa-plus"></i> Tambah
+                    </button>
+                </div>
+
+                <!-- Container Ceklis Kehadiran -->
+                <div id="members-checklist-container" style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; background: #fafafa;">
+                    <p id="empty-members-msg" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0;">
+                        Belum ada anggota ditambahkan. Klik tombol "Muat Kelompok Saya" di atas untuk memuat daftar otomatis.
+                    </p>
+                </div>
+
+                <!-- Tombol 2: Simpan Sebagai Kelompok Tetap -->
+                <button type="button" id="btn-save-as-preset" style="background: transparent; border: none; color: #059669; font-size: 0.8rem; font-weight: 600; cursor: pointer; margin-top: 0.4rem; padding: 0;">
+                    <i class="fa-solid fa-floppy-disk"></i> Simpan daftar di atas sebagai Kelompok Binaan Tetap saya
+                </button>
+            </div>
+            <!-- ========================================================= -->
 
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="materi">Materi yang Disampaikan</label>

@@ -13,7 +13,7 @@ let reports = [];
 let modules = [];
 let usersList = [];
 let currentFilteredReports = [];
-let currentReportAttendees = []; // Array menampung { name: string, isPresent: boolean }
+let currentReportAttendees = [];
 let keterlaksanaanChartInstance = null;
 
 // --- DOM ELEMENTS ---
@@ -58,17 +58,18 @@ const btnCloseModal = document.getElementById('btn-close-modal');
 const btnCancel = document.getElementById('btn-cancel');
 const btnExportExcel = document.getElementById('btn-export-excel');
 
-// Presensi Anggota Elements
+// Presensi & Preset Elements
 const inputNewMember = document.getElementById('input-new-member');
 const btnAddMemberList = document.getElementById('btn-add-member-list');
 const membersChecklistContainer = document.getElementById('members-checklist-container');
 const displayAutoCount = document.getElementById('display-auto-count');
+const btnLoadPresetMembers = document.getElementById('btn-load-preset-members');
+const btnSaveAsPreset = document.getElementById('btn-save-as-preset');
 
 // Modul Elements
 const btnAddModule = document.getElementById('btn-add-module');
 const modalModuleOverlay = document.getElementById('modal-module-overlay');
 const btnCloseModuleModal = document.getElementById('btn-close-module-modal');
-const btnCancelModule = document.getElementById('btn-cancel-module');
 const moduleForm = document.getElementById('module-form');
 const modulesContainer = document.getElementById('modules-container');
 const searchModuleInput = document.getElementById('search-module-input');
@@ -122,7 +123,7 @@ async function checkSession() {
         if (profile) {
             currentUserData = profile;
             displayUserName.textContent = profile.name;
-            displayUserRole.textContent = profile.role;
+            displayUserRole.textContent = `${profile.role} ${profile.fakultas ? '(' + profile.fakultas + ')' : ''}`;
 
             authSection.style.display = 'none';
             appSection.classList.remove('app-hidden');
@@ -150,7 +151,6 @@ function showAuthForm(targetForm) {
     targetForm.classList.add('active');
 }
 
-// REGISTRASI AKUN
 // REGISTRASI AKUN (DENGAN FAKULTAS)
 if (registerForm) {
     registerForm.addEventListener('submit', async (e) => {
@@ -162,7 +162,7 @@ if (registerForm) {
         const name = document.getElementById('reg-name').value.trim();
         const email = document.getElementById('reg-email').value.trim();
         const role = document.getElementById('reg-role').value;
-        const fakultas = document.getElementById('reg-fakultas').value; // <-- BACA NILAI FAKULTAS
+        const fakultas = document.getElementById('reg-fakultas').value;
         const password = document.getElementById('reg-password').value;
         const confirmPassword = document.getElementById('reg-confirm-password').value;
 
@@ -189,16 +189,9 @@ if (registerForm) {
                 return;
             }
 
-            // Simpan Profil ke Supabase beserta Fakultasnya
             if (authData.user) {
                 await _supabase.from('profiles').upsert([
-                    { 
-                        id: authData.user.id, 
-                        name: name, 
-                        email: email, 
-                        role: role,
-                        fakultas: fakultas // <-- SIMPAN KE TABEL PROFILES
-                    }
+                    { id: authData.user.id, name: name, email: email, role: role, fakultas: fakultas }
                 ], { onConflict: 'id' });
             }
 
@@ -238,6 +231,19 @@ if (loginForm) {
             btnSubmit.disabled = false;
             btnSubmit.textContent = "Masuk";
         }
+    });
+}
+
+// TOGGLE LIHAT/SEMBUNYIKAN PASSWORD
+const toggleLoginPassword = document.getElementById('toggle-login-password');
+const loginPasswordInput = document.getElementById('login-password');
+
+if (toggleLoginPassword && loginPasswordInput) {
+    toggleLoginPassword.addEventListener('click', () => {
+        const isPassword = loginPasswordInput.getAttribute('type') === 'password';
+        loginPasswordInput.setAttribute('type', isPassword ? 'text' : 'password');
+        toggleLoginPassword.classList.toggle('fa-eye', !isPassword);
+        toggleLoginPassword.classList.toggle('fa-eye-slash', isPassword);
     });
 }
 
@@ -311,21 +317,19 @@ function switchTab(tab) {
     }
 }
 
-// --- LOAD ALL DATA FROM SUPABASE ---
-// LOAD DATA DENGAN PENTENANAN MULTITENANCY FAKULTAS
+// --- LOAD ALL DATA (DENGAN MULTITENANCY FAKULTAS) ---
 async function loadAllData() {
     try {
         let query = _supabase.from('reports').select('*');
 
-        // 1. JIKA MENTOR: Hanya ambil laporannya sendiri
+        // 1. JIKA ROLE MENTOR: Hanya ambil laporannya sendiri
         if (currentUserData && currentUserData.role === 'Mentor') {
             query = query.eq('user_id', currentUserData.id);
-        }
-        // 2. JIKA PENGELOLA FAKULTAS: Khusus saring laporan dari fakultasnya saja
+        } 
+        // 2. JIKA ROLE PENGELOLA FAKULTAS: Saring khusus dari fakultasnya
         else if (currentUserData && currentUserData.role === 'Pengelola' && currentUserData.fakultas) {
             query = query.ilike('fakultas', `%${currentUserData.fakultas}%`);
         }
-        // 3. ADMIN SUPER / VIEWER: Tidak difilter (Melihat seluruh 8 Fakultas)
 
         const { data: reportsData, error: reportsError } = await query.order('created_at', { ascending: false });
 
@@ -344,14 +348,12 @@ async function loadAllData() {
             renderModules();
         }
 
-        // Load Users (Admin Super melihat semua, Pengelola hanya melihat user/mentor di fakultasnya)
+        // Load Users
         if (currentUserData && (currentUserData.role === 'Admin Super' || currentUserData.role === 'Pengelola')) {
             let userQuery = _supabase.from('profiles').select('*');
-            
             if (currentUserData.role === 'Pengelola' && currentUserData.fakultas) {
                 userQuery = userQuery.ilike('fakultas', `%${currentUserData.fakultas}%`);
             }
-
             const { data: profilesData } = await userQuery;
             usersList = profilesData || [];
             if (typeof renderUserTable === 'function') renderUserTable();
@@ -361,7 +363,10 @@ async function loadAllData() {
     }
 }
 
-// --- PRESENSI ANGGOTA DINAMIS ---
+// --- PRESENSI ANGGOTA DINAMIS & PRESET KELOMPOK BINAAN ---
+if (btnLoadPresetMembers) btnLoadPresetMembers.addEventListener('click', () => loadPresetMembersToForm(true));
+if (btnSaveAsPreset) btnSaveAsPreset.addEventListener('click', saveCurrentMembersAsPreset);
+
 if (btnAddMemberList) btnAddMemberList.addEventListener('click', addMemberToChecklist);
 if (inputNewMember) {
     inputNewMember.addEventListener('keypress', (e) => {
@@ -394,7 +399,7 @@ function renderAttendeesChecklist() {
     if (currentReportAttendees.length === 0) {
         membersChecklistContainer.innerHTML = `
             <p id="empty-members-msg" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0;">
-                Belum ada anggota ditambahkan. Ketik nama di atas lalu klik Tambah.
+                Belum ada anggota ditambahkan. Klik tombol "Muat Kelompok Saya" di atas untuk memuat daftar otomatis.
             </p>
         `;
         updateAttendanceCount();
@@ -436,17 +441,54 @@ function updateAttendanceCount() {
     displayAutoCount.textContent = `Total Hadir: ${presentCount} Orang`;
 }
 
+// LOGIKA KELOMPOK BINAAN TETAP (PRESET)
+function loadPresetMembersToForm(showAlertIfEmpty = false) {
+    if (currentUserData && Array.isArray(currentUserData.group_members) && currentUserData.group_members.length > 0) {
+        currentReportAttendees = currentUserData.group_members.map(name => ({
+            name: typeof name === 'object' ? name.name : name,
+            isPresent: true
+        }));
+        renderAttendeesChecklist();
+    } else {
+        if (showAlertIfEmpty) {
+            alert('Anda belum menyimpan Kelompok Binaan Tetap. Silakan tambahkan nama-nama anggota Anda, lalu klik "Simpan daftar di atas sebagai Kelompok Binaan Tetap saya".');
+        }
+    }
+}
+
+async function saveCurrentMembersAsPreset() {
+    if (!currentUserData || !currentUserData.id) return alert('Sesi berakhir!');
+    if (currentReportAttendees.length === 0) return alert('Tambahkan minimal 1 nama anggota terlebih dahulu!');
+
+    const memberNames = currentReportAttendees.map(m => m.name);
+
+    try {
+        const { error } = await _supabase
+            .from('profiles')
+            .update({ group_members: memberNames })
+            .eq('id', currentUserData.id);
+
+        if (error) throw error;
+
+        currentUserData.group_members = memberNames;
+        alert('Daftar anggota berhasil disimpan sebagai Kelompok Binaan Tetap Anda!');
+    } catch (err) {
+        alert('Gagal menyimpan kelompok tetap: ' + err.message);
+    }
+}
+
 // --- CRUD LAPORAN MENTORING ---
 if (btnAdd) {
     btnAdd.addEventListener('click', () => {
         currentReportAttendees = [];
-        renderAttendeesChecklist();
         
-        // Auto-fill tanggal hari ini & jam sekarang
         const today = new Date().toISOString().split('T')[0];
         const now = new Date().toTimeString().split(' ')[0].substring(0, 5);
         if (document.getElementById('mentoring-date')) document.getElementById('mentoring-date').value = today;
         if (document.getElementById('mentoring-time')) document.getElementById('mentoring-time').value = now;
+
+        // Auto Load Anggota Tetap Jika Ada
+        loadPresetMembersToForm();
 
         openModal('Tambah Laporan Mentoring');
     });
@@ -460,14 +502,9 @@ if (searchInput) searchInput.addEventListener('input', handleSearch);
 async function handleFormSubmit(e) {
     e.preventDefault();
 
-    if (!currentUserData || !currentUserData.id) {
-        alert('Sesi Anda telah berakhir. Silakan login kembali.');
-        return;
-    }
-
+    if (!currentUserData || !currentUserData.id) return alert('Sesi Anda telah berakhir. Silakan login kembali.');
     if (!Array.isArray(currentReportAttendees) || currentReportAttendees.length === 0) {
-        alert('Silakan tambahkan minimal 1 nama anggota binaan di bagian ceklis terlebih dahulu!');
-        return;
+        return alert('Silakan tambahkan minimal 1 nama anggota binaan di bagian ceklis terlebih dahulu!');
     }
 
     const btnSubmit = e.target.querySelector('button[type="submit"]');
@@ -514,7 +551,7 @@ async function handleFormSubmit(e) {
     }
 }
 
-// RENDER TABEL UTAMA
+// RENDER TABEL
 function renderTable(dataToRender = reports) {
     if (!tableBody) return;
     tableBody.innerHTML = '';
@@ -541,10 +578,7 @@ function renderTable(dataToRender = reports) {
 
         const row = document.createElement('tr');
         row.innerHTML = `
-            <!-- 1. MENTOR -->
             <td><strong>${escapeHtml(item.mentor_name || '-')}</strong></td>
-
-            <!-- 2. WAKTU & TEMPAT -->
             <td>
                 <div style="font-size: 0.9rem; font-weight: 500;">
                     <i class="fa-regular fa-calendar-days" style="color: var(--primary-color);"></i> ${escapeHtml(dateTimeText)}
@@ -553,23 +587,13 @@ function renderTable(dataToRender = reports) {
                     <i class="fa-solid fa-location-dot" style="color: #ef4444;"></i> ${escapeHtml(locationText)}
                 </small>
             </td>
-
-            <!-- 3. JML ANGGOTA -->
             <td><i class="fa-solid fa-user-group"></i> ${item.member_count || 0} Orang</td>
-
-            <!-- 4. FAKULTAS / PRODI -->
             <td>
                 <div>${escapeHtml(item.prodi || '-')}</div>
                 <small style="color: var(--text-muted);">${escapeHtml(item.fakultas || '-')}</small>
             </td>
-
-            <!-- 5. ANGKATAN -->
             <td><span class="badge-angkatan">${escapeHtml(item.angkatan || '-')}</span></td>
-
-            <!-- 6. MATERI DISAMPAIKAN -->
             <td><div class="materi-preview" title="${escapeHtml(item.materi || '')}">${escapeHtml(item.materi || '-')}</div></td>
-
-            <!-- 7. AKSI -->
             ${isViewer ? '' : `
             <td>
                 <button type="button" class="btn-action btn-edit" onclick="window.editReport('${item.id}')" title="Edit Laporan">
@@ -642,7 +666,6 @@ function handleSearch(e) {
 // --- MODUL LOGIC ---
 if (btnAddModule) btnAddModule.addEventListener('click', () => modalModuleOverlay.classList.add('active'));
 if (btnCloseModuleModal) btnCloseModuleModal.addEventListener('click', () => modalModuleOverlay.classList.remove('active'));
-if (btnCancelModule) btnCancelModule.addEventListener('click', () => modalModuleOverlay.classList.remove('active'));
 if (searchModuleInput) searchModuleInput.addEventListener('input', handleSearchModule);
 
 if (moduleForm) {
@@ -746,7 +769,7 @@ function renderUserTable() {
         row.innerHTML = `
             <td><strong>${escapeHtml(user.name)}</strong> ${isSelf ? '<small>(Anda)</small>' : ''}</td>
             <td>${escapeHtml(user.email)}</td>
-            <td><span class="badge-role">${user.role}</span></td>
+            <td><span class="badge-role">${user.role} ${user.fakultas ? '(' + user.fakultas + ')' : ''}</span></td>
             ${isAdminSuper ? `
             <td>
                 ${isSelf ? '-' : `
